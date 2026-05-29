@@ -1,0 +1,165 @@
+---
+name: brainstorm-and-specify
+description: Use when the user wants to transform a rough idea or feature request into a complete SpecKit specification through brainstorming, clarification, planning, and task breakdown. Triggers on `/brainstorm-and-specify` or when the user asks to "spec out" a feature idea.
+---
+
+# Brainstorm and Specify
+
+Orchestrate a structured workflow: validate prerequisites → brainstorm requirements → generate SpecKit specification.
+
+## Decision Flow
+
+```dot
+digraph workflow {
+    rankdir=TB;
+
+    start [label="Skill invoked", shape=doublecircle];
+    check_speckit [label="speckit-specify skill\nexists?", shape=diamond];
+    stop_speckit [label="STOP: Prompt user to\nrun speckit init", shape=box];
+    check_superpowers [label="superpowers:brainstorming\nAND superpowers:test-driven-\ndevelopment exist?", shape=diamond];
+    stop_superpowers [label="STOP: Prompt user to\ninstall Superpowers plugin", shape=box];
+    check_requirements [label="User provided\nrequirements?", shape=diamond];
+    stop_no_req [label="STOP: Prompt user\nto provide requirements", shape=box];
+    echo_req [label="Echo requirements\nback to user", shape=box];
+    brainstorm [label="Run superpowers:brainstorming\n(clarify, no Spec doc)", shape=box];
+    specify [label="Run speckit-specify", shape=box];
+    clarify [label="Run speckit-clarify", shape=box];
+    plan [label="Run speckit-plan", shape=box];
+    tasks [label="Run speckit-tasks", shape=box];
+    check_all_done [label="All 4 SpecKit\nsteps succeeded?", shape=diamond];
+    prompt_goal [label="Output final /goal\nprompt to user", shape=box];
+    done [label="Done", shape=doublecircle];
+
+    start -> check_speckit;
+    check_speckit -> stop_speckit [label="no"];
+    check_speckit -> check_superpowers [label="yes"];
+    check_superpowers -> stop_superpowers [label="missing"];
+    check_superpowers -> check_requirements [label="both exist"];
+    check_requirements -> stop_no_req [label="no"];
+    check_requirements -> echo_req [label="yes"];
+    echo_req -> brainstorm;
+    brainstorm -> specify;
+    specify -> clarify;
+    clarify -> plan;
+    plan -> tasks;
+    tasks -> check_all_done;
+    check_all_done -> prompt_goal [label="yes"];
+    prompt_goal -> done;
+}
+```
+
+## Prerequisites
+
+This skill depends on two external plugins:
+
+- **SpecKit** — provides `speckit-specify`, `speckit-clarify`, `speckit-plan`, `speckit-tasks`
+- **Superpowers** — provides `superpowers:brainstorming` and `superpowers:test-driven-development`
+
+## Step-by-Step Workflow
+
+Execute each step in order. Do NOT skip ahead. If any step fails its check, stop immediately and output the specified message to the user.
+
+### Step 1 — Check SpecKit Initialization
+
+Check whether the `speckit-specify` skill exists in the current session's available skills.
+
+**If NOT found**, output the following message verbatim and stop:
+
+```
+该项目尚未使用 SpecKit 进行初始化。请在终端（Terminal）中执行以下命令后，重新启动 Claude Code 并调用此 Skill：
+speckit init --here --integration claude
+```
+
+**If found**, proceed to Step 2.
+
+### Step 2 — Check Superpowers Skills
+
+Verify that BOTH `superpowers:brainstorming` AND `superpowers:test-driven-development` exist in the current session's available skills.
+
+**If either is missing**, output:
+
+```
+该 Skill 依赖 Superpowers 插件中的 brainstorming 和 test-driven-development 两个 Skill。请先安装 Superpowers 插件后重试。
+```
+
+**If both exist**, proceed to Step 3.
+
+### Step 3 — Confirm User Requirements
+
+Check whether the user provided requirements — either inline when invoking this skill, or in the preceding conversation context.
+
+**If no requirements found**, output:
+
+```
+请描述您的需求（想要实现的功能或变更），然后重新调用此 Skill。
+```
+
+**If requirements are found**, echo them back to the user in a clear format:
+
+```
+确认需求如下：
+
+[restate the user's requirements concisely here, in Chinese]
+
+即将进入头脑风暴阶段，细化具体需求。
+```
+
+Then proceed to Step 4.
+
+### Step 4 — Brainstorming
+
+Invoke `superpowers:brainstorming` via the Skill tool to clarify and refine the user's requirements.
+
+**Critical constraint:** Use brainstorming to explore intent, scope, edge cases, and design decisions. Do NOT generate a Superpowers Spec document. The output of this phase is a clear, shared understanding — not a written spec artifact.
+
+After brainstorming concludes and requirements are clarified, proceed to Step 5.
+
+### Step 5 — SpecKit Pipeline
+
+Invoke the following 4 skills in strict sequence via the Skill tool. Wait for each to complete successfully before starting the next:
+
+1. `speckit-specify` — generates the spec document and creates the spec directory
+2. `speckit-clarify` — clarifies ambiguities in the spec
+3. `speckit-plan` — creates the implementation plan
+4. `speckit-tasks` — breaks the plan into actionable tasks
+
+**Important:** After `speckit-specify` completes, note the generated spec directory path (typically `specs/001-xxx/`). You will need it for Step 6.
+
+If any of the 4 skills fails, report which skill failed and suggest the user re-run it individually.
+
+### Step 6 — Output Final Prompt
+
+After all 4 SpecKit steps complete successfully, output a prompt for the user to continue development. **Adapt the prompt based on the user's requirements:**
+
+**If the requirements involve code implementation**, output:
+
+```
+/goal 按照 @specs/001-xxx/ 的 Spec 规划，使用 Superpowers 的 TDD 方式进行开发。验收标准为所有模块均通过 TDD 的测试。
+```
+
+Replace `specs/001-xxx/` with the actual spec directory path generated by `speckit-specify` in Step 5.
+
+**If the requirements are documentation-only (no code changes)**, output:
+
+```
+/goal 按照 @specs/001-xxx/ 的 Spec 规划，完成文档的生成/更新工作。
+```
+
+**If the requirements involve refactoring only (no new features)**, output:
+
+```
+/goal 按照 @specs/001-xxx/ 的 Spec 规划，使用 Superpowers 的 TDD 方式进行重构。验收标准为所有现有测试保持通过，且重构后的代码满足 Spec 要求。
+```
+
+Always replace `specs/001-xxx/` with the actual directory name. Adapt the description and acceptance criteria to match what the user actually asked for.
+
+## Common Mistakes
+
+| Mistake | Correction |
+|---------|------------|
+| Skipping prerequisite checks | Always check Step 1 and Step 2 first — the workflow cannot proceed without SpecKit and Superpowers |
+| Generating a Superpowers Spec doc in Step 4 | Brainstorming clarifies requirements verbally; spec documents are generated by SpecKit in Step 5 |
+| Calling SpecKit skills in parallel | They must run sequentially: specify → clarify → plan → tasks |
+| Using a hardcoded spec path in Step 6 | Always use the actual directory path from `speckit-specify` output |
+| Using the TDD prompt for docs-only tasks | Adapt the final prompt to match the user's actual goal |
+| Proceeding after a skill fails | Stop and report which skill failed; do not continue the pipeline |

@@ -1,0 +1,17 @@
+{
+  "name": "yanzhi-sdd-workflow",
+  "owner": {
+    "name": "ATreep"
+  },
+  "plugins": [
+    {
+      "name": "yanzhi-sdd-workflow",
+      "source": "./",
+      "description": "A brainstorming-specify-tdd workflow, powered by Superpowers and SpecKit.",
+      "version": "v260529",
+      "author": {
+        "name": "ATreep"
+      }
+    }
+  ]
+}
