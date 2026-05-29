@@ -15,7 +15,7 @@ digraph workflow {
 
     start [label="Skill invoked", shape=doublecircle];
     check_speckit [label="speckit-specify skill\nexists?", shape=diamond];
-    stop_speckit [label="STOP: Prompt user to\nrun speckit init", shape=box];
+    stop_speckit [label="STOP: Prompt user to\nrun specify init", shape=box];
     check_superpowers [label="superpowers:brainstorming\nAND superpowers:test-driven-\ndevelopment exist?", shape=diamond];
     stop_superpowers [label="STOP: Prompt user to\ninstall Superpowers plugin", shape=box];
     check_requirements [label="User provided\nrequirements?", shape=diamond];
@@ -67,7 +67,7 @@ Check whether the `speckit-specify` skill exists in the current session's availa
 
 ```
 该项目尚未使用 SpecKit 进行初始化。请在终端（Terminal）中执行以下命令后，重新启动 Claude Code 并调用此 Skill：
-speckit init --here --integration claude
+specify init --here --integration claude
 ```
 
 **If found**, proceed to Step 2.
