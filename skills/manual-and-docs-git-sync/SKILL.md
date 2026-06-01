@@ -19,7 +19,8 @@ digraph sync_flow {
     check_manual_dir [label="yanzhi-user-manual/\nhas prior versions?", shape=diamond];
     mode_generate [label="Mode: Generate\nnew user manual", shape=box];
     mode_update [label="Mode: Update\nlegacy manual", shape=box];
-    invoke_writing [label="Invoke yanzhi-user-manual-\ngenerator:writing-user-manual", shape=box];
+    detect_gui [label="Project is\nGUI project?", shape=diamond];
+    invoke_writing [label="Invoke writing-user-manual\n(screenshot placeholders\ndefault YES for GUI)", shape=box];
     new_screenshots [label="New/replacement\nscreenshots needed?", shape=diamond];
     notify_screenshots [label="Notify user about\nscreenshot tasks.\nContinue with HTML.", shape=box];
     invoke_html [label="Invoke generating-\nhtml-manual", shape=box];
@@ -40,8 +41,10 @@ digraph sync_flow {
     check_deps -> check_manual_dir [label="all present"];
     check_manual_dir -> mode_generate [label="no"];
     check_manual_dir -> mode_update [label="yes"];
-    mode_generate -> invoke_writing;
-    mode_update -> invoke_writing;
+    mode_generate -> detect_gui;
+    mode_update -> detect_gui;
+    detect_gui -> invoke_writing [label="yes"];
+    detect_gui -> invoke_writing [label="no"];
     invoke_writing -> new_screenshots;
     new_screenshots -> notify_screenshots [label="yes"];
     new_screenshots -> invoke_html [label="no"];
@@ -96,6 +99,23 @@ Check whether the `yanzhi-user-manual/` directory in the project root contains p
 **If prior versions exist** → Update mode: find the latest version (highest `N` for today, or the most recent date), which serves as the legacy manual input. Copy all screenshots from the legacy manual's `screenshots/` directory to preserve them for reference.
 
 ### Step 2 — Invoke writing-user-manual
+
+**Before invoking**, determine whether the project is a GUI project. A project is considered GUI if it contains any of the following:
+
+- Web frontend (HTML, React, Vue, Angular, Next.js, etc.)
+- Desktop GUI (Electron, Qt, SwiftUI, WinForms, WPF, etc.)
+- Mobile app (iOS, Android, Flutter, React Native, etc.)
+- CLI/TUI with interactive interfaces
+- Any visual interface that end users interact with
+
+**Detection:** Scan the project's source code for UI frameworks, check `package.json` dependencies, or examine the project structure for frontend directories (e.g., `src/`, `app/`, `components/`, `pages/`, `views/`).
+
+**When invoking writing-user-manual**, include the screenshot decision in the invocation context:
+
+- **GUI project** → Invoke with the instruction: "This is a GUI project. Default to using screenshot placeholders — do not ask the user whether to include them. Proceed directly to generating the manual with screenshot placeholders."
+- **Non-GUI project** → Invoke normally; the writing-user-manual skill will detect no visual interface and skip the screenshot question automatically.
+
+This ensures the writing-user-manual skill does not interrupt the automated workflow with `AskUserQuestion` prompts about screenshot placeholders.
 
 Invoke `yanzhi-user-manual-generator:writing-user-manual` via the Skill tool.
 
@@ -261,6 +281,7 @@ Output a final summary:
 |---------|------------|
 | Skipping dependency check | Always validate all 4 skills exist before starting |
 | Forgetting to copy old screenshots in update mode | Copy the legacy `screenshots/` directory to the new version before invoking writing-user-manual |
+| Not detecting GUI project before invoking writing-user-manual | Scan project for UI frameworks (web, desktop, mobile, CLI/TUI); if GUI, pass "default screenshot placeholders YES" instruction to avoid AskUserQuestion interruption |
 | Proceeding with HTML when screenshots are missing | Always generate both Markdown and HTML regardless; image reference paths must be correct so user only needs to drop files in |
 | Not computing the correct version directory name | Use today's date as YYMMDD, increment N from 1 based on existing dirs for the same date |
 | Cloning docs repo into project directory | Always clone to a temp directory (`mktemp -d`), never inside the project |
