@@ -30,10 +30,21 @@
 
 触发方式：输入 `/brainstorm-and-specify` 或在对话中描述功能想法并请求生成 Spec。
 
+### manual-and-docs-git-sync
+
+在 brainstorming-specify-tdd 工作流完成后，自动同步用户手册、架构文档并推送双仓库：
+
+1. **用户手册** — 生成/更新带截图占位符的 Markdown 手册（`yanzhi-user-manual/vYYMMDD-N/`）
+2. **HTML 转换** — 将手册转为带侧边栏导航的独立 HTML 页面
+3. **架构文档** — 克隆公司文档仓库，调用 writing-docs 更新项目架构文档
+4. **双仓库推送** — 将项目仓库和文档仓库分别推送到 `auto-workflow` 分支
+
+触发方式：输入 `/manual-and-docs-git-sync` 或在工作流完成后请求同步文档。
+
 ## 工作流示意
 
 ```
-需求输入 → 前置检查 → 头脑风暴澄清 → SpecKit 生成 Spec → 输出执行提示
+需求输入 → 头脑风暴 → SpecKit → TDD 实现 → 文档同步（manual-and-docs-git-sync）
 ```
 
 ## 许可
