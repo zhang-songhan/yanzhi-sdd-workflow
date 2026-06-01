@@ -1,11 +1,11 @@
 ---
 name: manual-and-docs-git-sync
-description: Use after a brainstorming-specify-tdd workflow completes to automatically update user manuals (with HTML conversion), synchronize architecture docs, and push both the project repo and the documentation repo to the auto-workflow branch. Triggers on `/manual-and-docs-git-sync` or when the user asks to "sync manuals and docs" after a feature workflow.
+description: Use after a brainstorming-specify-tdd workflow completes to automatically update user manuals (with auto screenshot capture for web apps and HTML conversion), synchronize architecture docs, and push both the project repo and the documentation repo to the auto-workflow branch. Triggers on `/manual-and-docs-git-sync` or when the user asks to "sync manuals and docs" after a feature workflow.
 ---
 
 # Manual and Docs Git Sync
 
-After a brainstorming-specify-tdd workflow completes, automatically update the user manual, convert it to HTML, refresh architecture documentation, and push both repos.
+After a brainstorming-specify-tdd workflow completes, automatically update the user manual, capture screenshots (for web apps), convert it to HTML, refresh architecture documentation, and push both repos.
 
 ## Decision Flow
 
@@ -22,7 +22,9 @@ digraph sync_flow {
     detect_gui [label="Project is\nGUI project?", shape=diamond];
     invoke_writing [label="Invoke writing-user-manual\n(screenshot placeholders\ndefault YES for GUI)", shape=box];
     new_screenshots [label="New/replacement\nscreenshots needed?", shape=diamond];
-    notify_screenshots [label="Notify user about\nscreenshot tasks.\nContinue with HTML.", shape=box];
+    check_webapp [label="Project qualifies for\nauto-capture?\n(web-only, has placeholders,\nPlaywright available)", shape=diamond];
+    invoke_autocap [label="Invoke auto-capture-\nfor-webapp", shape=box];
+    notify_screenshots [label="Notify user about\nremaining screenshot tasks.\nContinue with HTML.", shape=box];
     invoke_html [label="Invoke generating-\nhtml-manual", shape=box];
     clone_docs [label="Clone projects-doc\nrepo to temp dir", shape=box];
     clone_ok [label="Clone\nsucceeded?", shape=diamond];
@@ -46,8 +48,12 @@ digraph sync_flow {
     detect_gui -> invoke_writing [label="yes"];
     detect_gui -> invoke_writing [label="no"];
     invoke_writing -> new_screenshots;
-    new_screenshots -> notify_screenshots [label="yes"];
+    new_screenshots -> check_webapp [label="yes"];
     new_screenshots -> invoke_html [label="no"];
+    check_webapp -> invoke_autocap [label="yes"];
+    check_webapp -> notify_screenshots [label="no"];
+    invoke_autocap -> notify_screenshots [label="some remaining"];
+    invoke_autocap -> invoke_html [label="all captured"];
     notify_screenshots -> invoke_html;
     invoke_html -> clone_docs;
     clone_docs -> clone_ok;
@@ -67,7 +73,7 @@ digraph sync_flow {
 
 This skill depends on four external plugin skills:
 
-- **yanzhi-user-manual-generator** — provides `writing-user-manual` and `generating-html-manual`
+- **yanzhi-user-manual-generator** — provides `writing-user-manual`, `auto-capture-for-webapp`, and `generating-html-manual`
 - **yanzhi-docs-generator** — provides `writing-docs`
 - **project-version-workflow** — provides `update-commit-bypass`
 
@@ -84,7 +90,10 @@ Check that ALL of the following skills exist in the current session:
 3. `yanzhi-docs-generator:writing-docs`
 4. `project-version-workflow:update-commit-bypass`
 
-**If any is missing**, output the missing skill name(s) and stop.
+Additionally, check for the optional skill:
+5. `yanzhi-user-manual-generator:auto-capture-for-webapp` — may or may not be present; its availability affects Step 4.
+
+**If any of the 4 required skills is missing**, output the missing skill name(s) and stop. If only `auto-capture-for-webapp` is missing, continue — auto-capture will be skipped in Step 4.
 
 ---
 
@@ -133,24 +142,78 @@ After writing-user-manual completes, check its output:
 - If the skill reported **any new screenshot placeholders** (generate mode) or **any "新增" or "替换" entries** in the screenshot modification table (update mode), new screenshots need to be created.
 - If only "保留" (keep) entries exist in update mode, no new screenshots are needed.
 
-**If new screenshots are needed:**
+**If no new screenshots are needed**, skip Step 4 and proceed directly to Step 5 (HTML conversion).
 
-1. Notify the user clearly with a message:
-   ```
-   用户手册已生成/更新，但存在需要新增或替换的截图。以下截图占位符已保留在文档中，请手动替换图片文件：
-   [list the affected screenshots with their target file paths]
+**If new screenshots are needed**, proceed to Step 4 to attempt automatic screenshot capture.
 
-   Markdown 和 HTML 均已生成。已有截图已由 generating-html-manual 自动处理，缺失截图在 HTML 中以占位符显示。
-   请分别向 Markdown 的截图目录和 HTML 输出目录中放入对应的图片文件，刷新 HTML 即可看到完整效果。
-   ```
-2. **Continue** to Step 4 to generate HTML. The HTML and Markdown MUST still be generated regardless of missing screenshots. The `generating-html-manual` skill handles existing screenshots and placeholder rendering per its own conventions — consult that skill's output for the exact directory structure where image files should be placed.
-3. **Continue** with the architecture docs workflow (Step 5).
+### Step 4 — Auto-Capture Screenshots (for Web Apps)
 
-**If no new screenshots are needed**, proceed to Step 4 directly.
+**This step runs ONLY when new/replacement screenshots are needed** (Step 3 detected "yes").
 
-### Step 4 — Convert to HTML
+Before notifying the user about manual screenshot work, check whether the project qualifies for automatic screenshot capture via `yanzhi-user-manual-generator:auto-capture-for-webapp`.
 
-**Always execute this step**, regardless of whether new screenshots are needed.
+#### 4.1 — Check Auto-Capture Eligibility
+
+The project qualifies for auto-capture when ALL of the following conditions are met:
+
+1. **Web-only frontend**: The project's GUI is exclusively a web frontend (React, Vue, Next.js, plain HTML, etc.) — NOT a desktop app, mobile app, CLI, or TUI. Use the same GUI detection from Step 2, but narrow it down: the project must be web-only.
+
+2. **Has `package.json` with a dev server script**: Check for `dev`, `start`, or `serve` scripts in `package.json`. The project must be runnable locally via `npm run dev` (or equivalent).
+
+3. **Manual has screenshot placeholders**: The generated manual contains `【图X：...】` placeholders with corresponding `![图X](screenshots/X-name.png)` image links. (This is guaranteed if Step 3 detected new screenshots.)
+
+4. **Playwright MCP is available**: Check the available MCP tools list for `mcp__plugin_everything-claude-code_playwright__browser_navigate` and related tools.
+
+5. **`auto-capture-for-webapp` skill is available**: The optional skill checked in Step 0 is present.
+
+**If ANY condition is NOT met**, auto-capture is not applicable. Skip to the notification message below and continue to Step 5.
+
+#### 4.2 — Invoke auto-capture-for-webapp
+
+If ALL conditions are met, invoke `yanzhi-user-manual-generator:auto-capture-for-webapp` via the Skill tool.
+
+Pass the following context to the skill:
+- **Project source path**: The current project root directory (where the web app source code lives)
+- **User manual path**: The newly generated/updated manual at `yanzhi-user-manual/vYYMMDD-N/<manual-filename>.md`
+
+The auto-capture skill will:
+- Parse screenshot placeholders from the manual
+- Start the project's dev server
+- Navigate to each relevant page with Playwright
+- Capture screenshots and save them to the manual's `screenshots/` directory
+
+#### 4.3 — Evaluate Auto-Capture Results
+
+After auto-capture completes, review its output:
+
+- **All screenshots captured** (all ✅) → Proceed directly to Step 5 (HTML conversion). No manual notification needed.
+- **Some screenshots failed** (mix of ✅ and ⚠️) → Notify the user about remaining items (see notification below), then proceed to Step 5.
+- **Auto-capture skill failed or was skipped entirely** → Use the full notification message below, then proceed to Step 5.
+
+#### Notification Message (when screenshots remain unfilled)
+
+If any screenshots could not be auto-captured, notify the user:
+
+```
+用户手册已生成/更新，部分截图已自动捕获，但仍有以下截图需要手动处理：
+
+✅ 已自动捕获：
+[list successfully captured screenshots]
+
+⚠️ 需手动截图：
+[list failed/skipped screenshots with their target file paths]
+
+Markdown 和 HTML 均已生成。已有截图已由 generating-html-manual 自动处理，缺失截图在 HTML 中以占位符显示。
+请分别向 Markdown 的截图目录和 HTML 输出目录中放入对应的图片文件，刷新 HTML 即可看到完整效果。
+```
+
+If auto-capture was entirely skipped (project not eligible), use the original notification from Step 3.
+
+**IMPORTANT:** Regardless of auto-capture results, always continue to Step 5. The HTML and Markdown MUST be generated regardless of missing screenshots.
+
+### Step 5 — Convert to HTML
+
+**Always execute this step**, regardless of whether screenshots were fully captured.
 
 Invoke `yanzhi-user-manual-generator:generating-html-manual` via the Skill tool, pointing to the newly created/updated markdown manual at `yanzhi-user-manual/vYYMMDD-N/<manual-filename>.md`.
 
@@ -162,7 +225,7 @@ The HTML output will be written to `yanzhi-user-manual/vYYMMDD-N/html/` by the g
 
 ### ARCHITECTURE DOCS WORKFLOW
 
-### Step 5 — Clone the Documentation Repository
+### Step 6 — Clone the Documentation Repository
 
 Clone the company documentation repository to a temporary directory:
 
@@ -173,7 +236,7 @@ git clone http://192.168.1.237:8080/doc/projects-doc "$tmpdir/projects-doc"
 
 **If the clone fails**, output the error message and stop. Do not proceed.
 
-### Step 6 — Find the Project Documentation Directory
+### Step 7 — Find the Project Documentation Directory
 
 In the cloned repository (`$tmpdir/projects-doc`), locate the subdirectory that corresponds to the **current project**. Match by:
 
@@ -188,7 +251,7 @@ Then stop. Do not proceed.
 
 **If found**, note the full path to the project's docs directory. This will be passed as the target to the writing-docs skill.
 
-### Step 7 — Invoke writing-docs
+### Step 8 — Invoke writing-docs
 
 Invoke `yanzhi-docs-generator:writing-docs` via the Skill tool. This skill will detect whether existing docs exist and perform either a full generation or delta update (based on git diff of the last 3 commits).
 
@@ -198,7 +261,7 @@ The writing-docs skill will update the project's doc files in-place within the c
 
 ### COMMIT AND PUSH
 
-### Step 8 — Ensure auto-workflow Branch
+### Step 9 — Ensure auto-workflow Branch
 
 Both the **project repository** and the **cloned docs repository** must be on (or create) the `auto-workflow` branch before committing and pushing.
 
@@ -219,7 +282,7 @@ else
 fi
 ```
 
-### Step 9 — Push Both Repositories
+### Step 10 — Push Both Repositories
 
 **Project repository** (the current working directory):
 
@@ -229,7 +292,7 @@ Invoke `project-version-workflow:update-commit-bypass` via the Skill tool. The s
 
 Do NOT use `update-commit-bypass` for the docs repo. Instead, manually commit and push with a commit message that **explicitly identifies which project's documentation was updated**.
 
-First, capture the project name and doc directory path (same name used to match the docs directory in Step 6):
+First, capture the project name and doc directory path (same name used to match the docs directory in Step 7):
 
 ```bash
 PROJECT_NAME=$(basename $(pwd))
@@ -241,10 +304,10 @@ Then execute the following sequence in the docs repo. **This sequence is MANDATO
 ```bash
 cd "$tmpdir/projects-doc"
 
-# Step 9a — Pull latest changes from remote FIRST
+# Step 10a — Pull latest changes from remote FIRST
 git pull origin auto-workflow
 
-# Step 9b — If git pull reports conflicts, resolve them immediately
+# Step 10b — If git pull reports conflicts, resolve them immediately
 # Resolution principle: MAXIMALLY PRESERVE ALL CONTENT from both sides.
 # - For each conflicted file, keep ALL unique content from BOTH remote and local versions
 # - Do NOT delete or discard any content from either side
@@ -253,14 +316,14 @@ git pull origin auto-workflow
 # - After resolving, mark conflicts as resolved:
 #   git add <resolved-files>
 
-# Step 9c — Stage all changes in the project's doc directory
+# Step 10c — Stage all changes in the project's doc directory
 git add "$PROJECT_DOC_DIR"/
 
-# Step 9d — Commit with project-identifying message
+# Step 10d — Commit with project-identifying message
 # The commit message MUST specify which document directory was changed
 git commit -m "docs: update $PROJECT_NAME/$PROJECT_DOC_DIR documentation"
 
-# Step 9e — Push to auto-workflow
+# Step 10e — Push to auto-workflow
 git push origin auto-workflow
 ```
 
@@ -279,7 +342,7 @@ If `git push` fails (e.g., rejected because remote has newer commits):
 
 **Why not use `update-commit-bypass` for the docs repo?** The `update-commit-bypass` skill auto-generates commit messages from the diff content. Since `projects-doc` is a shared repository containing documentation for multiple projects, a generic auto-generated message like "update architecture docs" would not indicate which project changed. A manual commit with an explicit project identifier is required.
 
-### Step 10 — Cleanup
+### Step 11 — Cleanup
 
 Remove the temporary clone directory:
 
@@ -292,7 +355,7 @@ Output a final summary:
 ```
 同步完成：
 - 用户手册：yanzhi-user-manual/vYYMMDD-N/ [含 Markdown 和 HTML 版本]
-- 截图状态：[无需截图] 或 [需手动补充截图：将图片分别放入 Markdown 和 HTML 的截图目录后刷新即可]
+- 截图状态：[无需截图] 或 [已自动捕获] 或 [部分自动捕获，剩余需手动：将图片分别放入 Markdown 和 HTML 的截图目录后刷新即可]
 - 架构文档：[docs repo path] 已更新
 - 项目仓库：已推送至 auto-workflow 分支
 - 文档仓库：已推送至 auto-workflow 分支
@@ -302,9 +365,11 @@ Output a final summary:
 
 | Mistake | Correction |
 |---------|------------|
-| Skipping dependency check | Always validate all 4 skills exist before starting |
+| Skipping dependency check | Always validate all 4 required skills exist before starting |
 | Forgetting to copy old screenshots in update mode | Copy the legacy `screenshots/` directory to the new version before invoking writing-user-manual |
 | Not detecting GUI project before invoking writing-user-manual | Scan project for UI frameworks (web, desktop, mobile, CLI/TUI); if GUI, pass "default screenshot placeholders YES" instruction to avoid AskUserQuestion interruption |
+| Skipping auto-capture check when screenshots are needed | Before notifying user about manual screenshots, always check Step 4 eligibility conditions (web-only, has dev server, Playwright available, skill present) |
+| Treating auto-capture as all-or-nothing | Auto-capture may partially succeed. Proceed to HTML generation with whatever screenshots were captured; only notify user about the remaining ones |
 | Proceeding with HTML when screenshots are missing | Always generate both Markdown and HTML regardless; image reference paths must be correct so user only needs to drop files in |
 | Not computing the correct version directory name | Use today's date as YYMMDD, increment N from 1 based on existing dirs for the same date |
 | Cloning docs repo into project directory | Always clone to a temp directory (`mktemp -d`), never inside the project |
