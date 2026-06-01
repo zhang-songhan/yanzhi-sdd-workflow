@@ -21,7 +21,7 @@ digraph sync_flow {
     mode_update [label="Mode: Update\nlegacy manual", shape=box];
     invoke_writing [label="Invoke yanzhi-user-manual-\ngenerator:writing-user-manual", shape=box];
     new_screenshots [label="New/replacement\nscreenshots needed?", shape=diamond];
-    notify_screenshots [label="Notify user about\nscreenshot tasks.\nSkip HTML conversion.", shape=box];
+    notify_screenshots [label="Notify user about\nscreenshot tasks.\nContinue with HTML.", shape=box];
     invoke_html [label="Invoke generating-\nhtml-manual", shape=box];
     clone_docs [label="Clone projects-doc\nrepo to temp dir", shape=box];
     clone_ok [label="Clone\nsucceeded?", shape=diamond];
@@ -45,7 +45,7 @@ digraph sync_flow {
     invoke_writing -> new_screenshots;
     new_screenshots -> notify_screenshots [label="yes"];
     new_screenshots -> invoke_html [label="no"];
-    notify_screenshots -> clone_docs;
+    notify_screenshots -> invoke_html;
     invoke_html -> clone_docs;
     clone_docs -> clone_ok;
     clone_ok -> stop_clone [label="no"];
@@ -106,7 +106,7 @@ Invoke `yanzhi-user-manual-generator:writing-user-manual` via the Skill tool.
 
 Specify the output path as `yanzhi-user-manual/vYYMMDD-N/` (replace with the actual computed version string).
 
-### Step 3 — Check for Screenshot Blockers
+### Step 3 — Check for Screenshot Status
 
 After writing-user-manual completes, check its output:
 
@@ -117,21 +117,26 @@ After writing-user-manual completes, check its output:
 
 1. Notify the user clearly with a message:
    ```
-   用户手册已生成/更新，但存在需要新增或替换的截图。请手动处理以下截图后再运行 HTML 转换：
-   [list the affected screenshots]
+   用户手册已生成/更新，但存在需要新增或替换的截图。以下截图占位符已保留在文档中，请手动替换图片文件：
+   [list the affected screenshots with their target file paths]
 
-   架构文档工作流将继续执行。
+   Markdown 和 HTML 均已生成。已有截图已由 generating-html-manual 自动处理，缺失截图在 HTML 中以占位符显示。
+   请分别向 Markdown 的截图目录和 HTML 输出目录中放入对应的图片文件，刷新 HTML 即可看到完整效果。
    ```
-2. **Skip the HTML conversion step** (Step 4 of the manual workflow).
+2. **Continue** to Step 4 to generate HTML. The HTML and Markdown MUST still be generated regardless of missing screenshots. The `generating-html-manual` skill handles existing screenshots and placeholder rendering per its own conventions — consult that skill's output for the exact directory structure where image files should be placed.
 3. **Continue** with the architecture docs workflow (Step 5).
 
-**If no new screenshots are needed**, proceed to Step 4.
+**If no new screenshots are needed**, proceed to Step 4 directly.
 
 ### Step 4 — Convert to HTML
+
+**Always execute this step**, regardless of whether new screenshots are needed.
 
 Invoke `yanzhi-user-manual-generator:generating-html-manual` via the Skill tool, pointing to the newly created/updated markdown manual at `yanzhi-user-manual/vYYMMDD-N/<manual-filename>.md`.
 
 The HTML output will be written to `yanzhi-user-manual/vYYMMDD-N/html/` by the generating-html-manual skill.
+
+**Image references:** The `generating-html-manual` skill handles image path conversion and screenshot placement according to its own conventions. This skill does not prescribe the exact directory structure (e.g., subfolder names) — those are defined by `generating-html-manual` and may evolve independently. After HTML generation completes, verify that image references in both Markdown and HTML are consistent with the actual output structure.
 
 ---
 
@@ -196,15 +201,40 @@ fi
 
 ### Step 9 — Push Both Repositories
 
-Invoke `project-version-workflow:update-commit-bypass` TWICE — once for each repository.
-
 **Project repository** (the current working directory):
-- The skill auto-commits and pushes to the `auto-workflow` branch.
+
+Invoke `project-version-workflow:update-commit-bypass` via the Skill tool. The skill auto-commits with a conventional commit message, creates a version tag, and pushes to the `auto-workflow` branch.
 
 **Docs repository** (the cloned temp directory):
-- Switch context to the cloned directory, then invoke the same skill to auto-commit and push to `auto-workflow`.
 
-Since `update-commit-bypass` runs non-interactively (no user prompts), both pushes complete without manual intervention.
+Do NOT use `update-commit-bypass` for the docs repo. Instead, manually commit and push with a commit message that **explicitly identifies which project's documentation was updated**.
+
+First, capture the project name (same name used to match the docs directory in Step 6):
+
+```bash
+PROJECT_NAME=$(basename $(pwd))
+```
+
+Then commit and push in the docs repo:
+
+```bash
+cd "$tmpdir/projects-doc"
+
+# Stage all changes in the project's doc directory
+git add <project-doc-dir>/
+
+# Commit with project-identifying message
+git commit -m "docs: update $PROJECT_NAME architecture documentation"
+
+# Push to auto-workflow
+git push origin auto-workflow
+```
+
+The commit message format is: `docs: update <project-name> architecture documentation`
+
+This ensures anyone browsing the `projects-doc` commit history can immediately see which project was updated.
+
+**Why not use `update-commit-bypass` for the docs repo?** The `update-commit-bypass` skill auto-generates commit messages from the diff content. Since `projects-doc` is a shared repository containing documentation for multiple projects, a generic auto-generated message like "update architecture docs" would not indicate which project changed. A manual commit with an explicit project identifier is required.
 
 ### Step 10 — Cleanup
 
@@ -218,7 +248,8 @@ Output a final summary:
 
 ```
 同步完成：
-- 用户手册：yanzhi-user-manual/vYYMMDD-N/ [含 HTML 版本] 或 [待截图后转换 HTML]
+- 用户手册：yanzhi-user-manual/vYYMMDD-N/ [含 Markdown 和 HTML 版本]
+- 截图状态：[无需截图] 或 [需手动补充截图：将图片分别放入 Markdown 和 HTML 的截图目录后刷新即可]
 - 架构文档：[docs repo path] 已更新
 - 项目仓库：已推送至 auto-workflow 分支
 - 文档仓库：已推送至 auto-workflow 分支
@@ -230,12 +261,12 @@ Output a final summary:
 |---------|------------|
 | Skipping dependency check | Always validate all 4 skills exist before starting |
 | Forgetting to copy old screenshots in update mode | Copy the legacy `screenshots/` directory to the new version before invoking writing-user-manual |
-| Proceeding with HTML when screenshots are missing | Check the screenshot table output; skip HTML if new screenshots needed |
+| Proceeding with HTML when screenshots are missing | Always generate both Markdown and HTML regardless; image reference paths must be correct so user only needs to drop files in |
 | Not computing the correct version directory name | Use today's date as YYMMDD, increment N from 1 based on existing dirs for the same date |
 | Cloning docs repo into project directory | Always clone to a temp directory (`mktemp -d`), never inside the project |
 | Not matching the project name correctly | Match by project directory basename or explicit mapping in the docs repo |
 | Pushing only one repository | Both the project repo AND the docs repo must be pushed |
 | Pushing to wrong branch | Both repos must push to `auto-workflow`, NOT `main` |
 | Leaving temp clone on disk | Always `rm -rf` the temp directory after pushing |
-| Running HTML conversion before screenshots ready | Screenshots must be inserted first; otherwise HTML will have broken image links |
+| Missing or incorrect image reference paths | After HTML generation, verify both Markdown and HTML image references are consistent with the actual output directory structure; generating-html-manual handles path conversion per its own conventions |
 | Using different version names for manual and HTML | Both must use the same `vYYMMDD-N/` directory — HTML output goes inside it as `html/` |
