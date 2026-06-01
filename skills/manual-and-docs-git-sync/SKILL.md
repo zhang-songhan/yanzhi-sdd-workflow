@@ -91,7 +91,7 @@ Check that ALL of the following skills exist in the current session:
 
 Check whether the `yanzhi-user-manual/` directory in the project root contains prior version directories (subdirectories matching the `vYYMMDD-N` pattern).
 
-**If no prior versions exist** → Generate mode: the writing-user-manual skill will create a new manual from the current project source/spec. The new manual version directory will be named `vYYMMDD-N` where `YYMMDD` is today's date and `N` starts at `1`.
+**If no prior versions exist** → Generate mode: the writing-user-manual skill will create a new manual from the current project source/spec. The new manual version directory will be named `vYYMMDD-N` where `YYMMDD` is today's date and `N` starts at `0` (if `N`=`0`, the version is only named vYYMMDD, hiding `-N`).
 
 **If prior versions exist** → Update mode: find the latest version (highest `N` for today, or the most recent date), which serves as the legacy manual input. Copy all screenshots from the legacy manual's `screenshots/` directory to preserve them for reference.
 
