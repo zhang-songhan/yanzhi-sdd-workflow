@@ -4,8 +4,18 @@
 
 ## 前置依赖
 
+本插件依赖以下外部插件提供的能力：
+
+### brainstorm-and-specify 依赖
+
 - **[SpecKit](https://github.com/zhang-songhan/speckit)** — 提供 `speckit-specify`、`speckit-clarify`、`speckit-plan`、`speckit-tasks`
 - **[Superpowers](https://github.com/anthropic/claude-code-superpowers)** — 提供 `superpowers:brainstorming` 和 `superpowers:test-driven-development`
+
+### manual-and-docs-git-sync 依赖
+
+- **[yanzhi-user-manual-generator](https://github.com/zhang-songhan/yanzhi-user-manual-generator)** — 提供 `writing-user-manual`、`generating-html-manual`、`auto-capture-for-webapp`
+- **[yanzhi-docs-generator](https://github.com/zhang-songhan/yanzhi-docs-generator)** — 提供 `writing-docs`
+- **[project-version-workflow](https://github.com/ATreep/project-version-workflow)** — 提供 `update-commit-bypass`
 
 ## 安装
 
@@ -34,7 +44,7 @@
 
 在 brainstorming-specify-tdd 工作流完成后，自动同步用户手册、架构文档并推送双仓库：
 
-1. **用户手册** — 生成/更新带截图占位符的 Markdown 手册（`yanzhi-user-manual/vYYMMDD-N/`）
+1. **用户手册** — 生成/更新带截图占位符的 Markdown 手册（`yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/`）
 2. **HTML 转换** — 将手册转为带侧边栏导航的独立 HTML 页面
 3. **架构文档** — 克隆公司文档仓库，调用 writing-docs 更新项目架构文档
 4. **双仓库推送** — 将项目仓库和文档仓库分别推送到 `auto-workflow` 分支

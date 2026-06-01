@@ -99,13 +99,33 @@ Additionally, check for the optional skill:
 
 ### USER MANUAL WORKFLOW
 
-### Step 1 — Determine Manual Mode (Generate vs Update)
+### Step 1 — Extract Version Name and Determine Manual Mode
 
-Check whether the `yanzhi-user-manual/` directory in the project root contains prior version directories (subdirectories matching the `vYYMMDD-N` pattern).
+#### 1a — Extract Version Name from Project Source
 
-**If no prior versions exist** → Generate mode: the writing-user-manual skill will create a new manual from the current project source/spec. The new manual version directory will be named `vYYMMDD-N` where `YYMMDD` is today's date and `N` starts at `0` (if `N`=`0`, the version is only named vYYMMDD, hiding `-N`).
+Extract the project's version name from the source code using the method described in `yanzhi-user-manual-generator:writing-user-manual` Step 1 ("Extract and Validate Version Name"). The writing-user-manual skill searches common locations (config files, source code, spec documents, git tags, changelogs) to find the version name.
 
-**If prior versions exist** → Update mode: find the latest version (highest `N` for today, or the most recent date), which serves as the legacy manual input. Copy all screenshots from the legacy manual's `screenshots/` directory to preserve them for reference.
+**If the version name cannot be found**, stop and warn the user — the version name is required for the manual directory name.
+
+Record the extracted version name as `<version-name>` (e.g., `v123`).
+
+#### 1b — Determine Manual Mode (Generate vs Update)
+
+Check whether the `yanzhi-user-manual/` directory in the project root contains any prior version subdirectories.
+
+**If no prior versions exist** → Generate mode: the writing-user-manual skill will create a new manual from the current project source/spec.
+
+**If prior versions exist** → Update mode: find the latest version directory (by sorting directory names alphabetically or by embedded timestamp), which serves as the legacy manual input. Copy all screenshots from the legacy manual's `screenshots/` directory to preserve them for reference.
+
+The new manual version directory will be named:
+
+```
+<version-name>-YYMMDD-HHmmss
+```
+
+Where `<version-name>` is from Step 1a (e.g., `v123`), `YYMMDD` is today's date, and `HHmmss` is the current time.
+
+Example: `v123-260601-150233`
 
 ### Step 2 — Invoke writing-user-manual
 
@@ -133,7 +153,7 @@ Invoke `yanzhi-user-manual-generator:writing-user-manual` via the Skill tool.
 
 **IMPORTANT:** After the writing-user-manual skill completes, carefully read its terminal output (the screenshot modification table for update mode, or the screenshot placeholder table for generate mode) to determine whether new or replacement screenshots are needed.
 
-Specify the output path as `yanzhi-user-manual/vYYMMDD-N/` (replace with the actual computed version string).
+Specify the output path as `yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/` (replace with the actual computed version string).
 
 ### Step 3 — Check for Screenshot Status
 
@@ -174,7 +194,7 @@ If ALL conditions are met, invoke `yanzhi-user-manual-generator:auto-capture-for
 
 Pass the following context to the skill:
 - **Project source path**: The current project root directory (where the web app source code lives)
-- **User manual path**: The newly generated/updated manual at `yanzhi-user-manual/vYYMMDD-N/<manual-filename>.md`
+- **User manual path**: The newly generated/updated manual at `yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/<manual-filename>.md`
 
 The auto-capture skill will:
 - Parse screenshot placeholders from the manual
@@ -215,9 +235,9 @@ If auto-capture was entirely skipped (project not eligible), use the original no
 
 **Always execute this step**, regardless of whether screenshots were fully captured.
 
-Invoke `yanzhi-user-manual-generator:generating-html-manual` via the Skill tool, pointing to the newly created/updated markdown manual at `yanzhi-user-manual/vYYMMDD-N/<manual-filename>.md`.
+Invoke `yanzhi-user-manual-generator:generating-html-manual` via the Skill tool, pointing to the newly created/updated markdown manual at `yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/<manual-filename>.md`.
 
-The HTML output will be written to `yanzhi-user-manual/vYYMMDD-N/html/` by the generating-html-manual skill.
+The HTML output will be written to `yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/html/` by the generating-html-manual skill.
 
 **Image references:** The `generating-html-manual` skill handles image path conversion and screenshot placement according to its own conventions. This skill does not prescribe the exact directory structure (e.g., subfolder names) — those are defined by `generating-html-manual` and may evolve independently. After HTML generation completes, verify that image references in both Markdown and HTML are consistent with the actual output structure.
 
@@ -354,7 +374,7 @@ Output a final summary:
 
 ```
 同步完成：
-- 用户手册：yanzhi-user-manual/vYYMMDD-N/ [含 Markdown 和 HTML 版本]
+- 用户手册：yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/ [含 Markdown 和 HTML 版本]
 - 截图状态：[无需截图] 或 [已自动捕获] 或 [部分自动捕获，剩余需手动：将图片分别放入 Markdown 和 HTML 的截图目录后刷新即可]
 - 架构文档：[docs repo path] 已更新
 - 项目仓库：已推送至 auto-workflow 分支
@@ -371,14 +391,14 @@ Output a final summary:
 | Skipping auto-capture check when screenshots are needed | Before notifying user about manual screenshots, always check Step 4 eligibility conditions (web-only, has dev server, Playwright available, skill present) |
 | Treating auto-capture as all-or-nothing | Auto-capture may partially succeed. Proceed to HTML generation with whatever screenshots were captured; only notify user about the remaining ones |
 | Proceeding with HTML when screenshots are missing | Always generate both Markdown and HTML regardless; image reference paths must be correct so user only needs to drop files in |
-| Not computing the correct version directory name | Use today's date as YYMMDD, increment N from 1 based on existing dirs for the same date |
+| Not computing the correct version directory name | Extract version-name from project source using writing-user-manual's method (Step 1a), then combine with YYMMDD-HHmmss timestamp |
 | Cloning docs repo into project directory | Always clone to a temp directory (`mktemp -d`), never inside the project |
 | Not matching the project name correctly | Match by project directory basename or explicit mapping in the docs repo |
 | Pushing only one repository | Both the project repo AND the docs repo must be pushed |
 | Pushing to wrong branch | Both repos must push to `auto-workflow`, NOT `main` |
 | Leaving temp clone on disk | Always `rm -rf` the temp directory after pushing |
 | Missing or incorrect image reference paths | After HTML generation, verify both Markdown and HTML image references are consistent with the actual output directory structure; generating-html-manual handles path conversion per its own conventions |
-| Using different version names for manual and HTML | Both must use the same `vYYMMDD-N/` directory — HTML output goes inside it as `html/` |
+| Using different version names for manual and HTML | Both must use the same `<version-name>-YYMMDD-HHmmss/` directory — HTML output goes inside it as `html/` |
 | Using `git push --force` for docs repo | **NEVER** use `--force`, `-f`, or `--force-with-lease`. If push fails, `git pull` → resolve conflicts → re-commit → push again. Repeat until successful. |
 | Pushing docs repo without `git pull` first | Always `git pull origin auto-workflow` BEFORE committing and pushing. This prevents unnecessary conflicts and ensures the docs repo is up to date. |
 | Discarding content during conflict resolution | When resolving conflicts in `projects-doc`, maximally preserve ALL content from BOTH sides. Never delete or discard content — keep everything from both remote and local versions. |
