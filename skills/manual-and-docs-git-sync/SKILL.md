@@ -229,30 +229,53 @@ Invoke `project-version-workflow:update-commit-bypass` via the Skill tool. The s
 
 Do NOT use `update-commit-bypass` for the docs repo. Instead, manually commit and push with a commit message that **explicitly identifies which project's documentation was updated**.
 
-First, capture the project name (same name used to match the docs directory in Step 6):
+First, capture the project name and doc directory path (same name used to match the docs directory in Step 6):
 
 ```bash
 PROJECT_NAME=$(basename $(pwd))
+PROJECT_DOC_DIR="<project-doc-dir>"  # e.g., "智慧教研系统-yz-smart-research"
 ```
 
-Then commit and push in the docs repo:
+Then execute the following sequence in the docs repo. **This sequence is MANDATORY — do not skip or reorder any step:**
 
 ```bash
 cd "$tmpdir/projects-doc"
 
-# Stage all changes in the project's doc directory
-git add <project-doc-dir>/
+# Step 9a — Pull latest changes from remote FIRST
+git pull origin auto-workflow
 
-# Commit with project-identifying message
-git commit -m "docs: update $PROJECT_NAME architecture documentation"
+# Step 9b — If git pull reports conflicts, resolve them immediately
+# Resolution principle: MAXIMALLY PRESERVE ALL CONTENT from both sides.
+# - For each conflicted file, keep ALL unique content from BOTH remote and local versions
+# - Do NOT delete or discard any content from either side
+# - If the same section was modified differently, keep both versions with clear markers
+#   indicating which is remote and which is local
+# - After resolving, mark conflicts as resolved:
+#   git add <resolved-files>
 
-# Push to auto-workflow
+# Step 9c — Stage all changes in the project's doc directory
+git add "$PROJECT_DOC_DIR"/
+
+# Step 9d — Commit with project-identifying message
+# The commit message MUST specify which document directory was changed
+git commit -m "docs: update $PROJECT_NAME/$PROJECT_DOC_DIR documentation"
+
+# Step 9e — Push to auto-workflow
 git push origin auto-workflow
 ```
 
-The commit message format is: `docs: update <project-name> architecture documentation`
+The commit message format is: `docs: update <project-name>/<doc-directory> documentation`
 
-This ensures anyone browsing the `projects-doc` commit history can immediately see which project was updated.
+This ensures anyone browsing the `projects-doc` commit history can immediately see which project and which doc directory was updated.
+
+**⚠️ CRITICAL: NEVER use `git push --force` (or `git push -f` or `git push --force-with-lease`).**
+
+If `git push` fails (e.g., rejected because remote has newer commits):
+1. Run `git pull origin auto-workflow` again to fetch the latest remote changes
+2. Resolve any conflicts (maximally preserve all content from both sides)
+3. Re-run `git commit` if needed (or amend if conflicts were resolved in the merge commit)
+4. Run `git push origin auto-workflow` again
+5. Repeat this loop until push succeeds — **never bypass with force push**
 
 **Why not use `update-commit-bypass` for the docs repo?** The `update-commit-bypass` skill auto-generates commit messages from the diff content. Since `projects-doc` is a shared repository containing documentation for multiple projects, a generic auto-generated message like "update architecture docs" would not indicate which project changed. A manual commit with an explicit project identifier is required.
 
@@ -291,3 +314,7 @@ Output a final summary:
 | Leaving temp clone on disk | Always `rm -rf` the temp directory after pushing |
 | Missing or incorrect image reference paths | After HTML generation, verify both Markdown and HTML image references are consistent with the actual output directory structure; generating-html-manual handles path conversion per its own conventions |
 | Using different version names for manual and HTML | Both must use the same `vYYMMDD-N/` directory — HTML output goes inside it as `html/` |
+| Using `git push --force` for docs repo | **NEVER** use `--force`, `-f`, or `--force-with-lease`. If push fails, `git pull` → resolve conflicts → re-commit → push again. Repeat until successful. |
+| Pushing docs repo without `git pull` first | Always `git pull origin auto-workflow` BEFORE committing and pushing. This prevents unnecessary conflicts and ensures the docs repo is up to date. |
+| Discarding content during conflict resolution | When resolving conflicts in `projects-doc`, maximally preserve ALL content from BOTH sides. Never delete or discard content — keep everything from both remote and local versions. |
+| Not specifying which doc directory changed in commit message | The commit message must identify the project AND the specific doc directory: `docs: update <project>/<doc-dir> documentation` |
