@@ -22,7 +22,7 @@ digraph sync_flow {
     detect_gui [label="Project is\nGUI project?", shape=diamond];
     invoke_writing [label="Invoke writing-user-manual\n(screenshot placeholders\ndefault YES for GUI)", shape=box];
     new_screenshots [label="New/replacement\nscreenshots needed?", shape=diamond];
-    check_webapp [label="Project qualifies for\nauto-capture?\n(web-only, has placeholders,\nPlaywright available)", shape=diamond];
+    check_webapp [label="Project qualifies for\nauto-capture?\n(web-only, has placeholders)", shape=diamond];
     invoke_autocap [label="Invoke auto-capture-\nfor-webapp", shape=box];
     notify_screenshots [label="Notify user about\nremaining screenshot tasks.\nContinue with HTML.", shape=box];
     invoke_html [label="Invoke generating-\nhtml-manual", shape=box];
@@ -36,6 +36,7 @@ digraph sync_flow {
     switch_branch [label="Ensure auto-workflow\nbranch in both repos", shape=box];
     push_project [label="Push project repo\nto auto-workflow", shape=box];
     push_docs [label="Push docs repo\nto auto-workflow", shape=box];
+    review_changes [label="List all changes\n(screenshots + docs)\nfor user review", shape=box];
     done [label="Done", shape=doublecircle];
 
     start -> check_deps;
@@ -65,7 +66,8 @@ digraph sync_flow {
     invoke_docs -> switch_branch;
     switch_branch -> push_project;
     push_project -> push_docs;
-    push_docs -> done;
+    push_docs -> review_changes;
+    review_changes -> done;
 }
 ```
 
@@ -166,6 +168,8 @@ After writing-user-manual completes, check its output:
 
 **If new screenshots are needed**, proceed to Step 4 to attempt automatic screenshot capture.
 
+**SAVE for Step 12:** Record the complete screenshot status table (all entries with their statuses: 新增/替换/保留) — this will be presented to the user in the final change review.
+
 ### Step 4 — Auto-Capture Screenshots (for Web Apps)
 
 **This step runs ONLY when new/replacement screenshots are needed** (Step 3 detected "yes").
@@ -210,6 +214,8 @@ After auto-capture completes, review its output:
 - **Some screenshots failed** (mix of ✅ and ⚠️) → Notify the user about remaining items (see notification below), then proceed to Step 5.
 - **Auto-capture skill failed or was skipped entirely** → Use the full notification message below, then proceed to Step 5.
 
+**SAVE for Step 12:** Record the per-screenshot auto-capture results (which succeeded ✅ and which failed ⚠️ with reasons). This will be merged into the final change review table.
+
 #### Notification Message (when screenshots remain unfilled)
 
 If any screenshots could not be auto-captured, notify the user:
@@ -247,18 +253,28 @@ The HTML output will be written to `yanzhi-user-manual/<version-name>-YYMMDD-HHm
 
 ### Step 6 — Clone the Documentation Repository
 
-Clone the company documentation repository to a temporary directory:
+Clone the company documentation repository to a local cache directory. Use a fixed path so the clone can be reused across sync runs:
 
 ```bash
-tmpdir=$(mktemp -d)
-git clone http://192.168.1.237:8080/doc/projects-doc "$tmpdir/projects-doc"
+TMPDIR="${TMPDIR:-/tmp}"
+DOCS_CLONE_DIR="$TMPDIR/projects-doc-clone"
+
+if [ -d "$DOCS_CLONE_DIR/.git" ]; then
+  # Clone already exists — fetch latest changes
+  cd "$DOCS_CLONE_DIR"
+  git fetch origin
+  cd "$OLDPWD"
+else
+  # First time — clone fresh
+  git clone http://192.168.1.237:8080/doc/projects-doc "$DOCS_CLONE_DIR"
+fi
 ```
 
-**If the clone fails**, output the error message and stop. Do not proceed.
+**If the clone or fetch fails**, output the error message and stop. Do not proceed.
 
 ### Step 7 — Find the Project Documentation Directory
 
-In the cloned repository (`$tmpdir/projects-doc`), locate the subdirectory that corresponds to the **current project**. Match by:
+In the cloned repository (`$DOCS_CLONE_DIR`), locate the subdirectory that corresponds to the **current project**. Match by:
 
 1. The project's directory name (e.g., `basename $(pwd)`)
 2. A README or index file listing project names to directory mappings
@@ -308,7 +324,7 @@ fi
 
 Invoke `project-version-workflow:update-commit-bypass` via the Skill tool. The skill auto-commits with a conventional commit message, creates a version tag, and pushes to the `auto-workflow` branch.
 
-**Docs repository** (the cloned temp directory):
+**Docs repository** (the cloned docs directory at `$DOCS_CLONE_DIR`):
 
 Do NOT use `update-commit-bypass` for the docs repo. Instead, manually commit and push with a commit message that **explicitly identifies which project's documentation was updated**.
 
@@ -322,7 +338,7 @@ PROJECT_DOC_DIR="<project-doc-dir>"  # e.g., "智慧教研系统-yz-smart-resear
 Then execute the following sequence in the docs repo. **This sequence is MANDATORY — do not skip or reorder any step:**
 
 ```bash
-cd "$tmpdir/projects-doc"
+cd "$DOCS_CLONE_DIR"
 
 # Step 10a — Pull latest changes from remote FIRST
 git pull origin auto-workflow
@@ -362,23 +378,74 @@ If `git push` fails (e.g., rejected because remote has newer commits):
 
 **Why not use `update-commit-bypass` for the docs repo?** The `update-commit-bypass` skill auto-generates commit messages from the diff content. Since `projects-doc` is a shared repository containing documentation for multiple projects, a generic auto-generated message like "update architecture docs" would not indicate which project changed. A manual commit with an explicit project identifier is required.
 
-### Step 11 — Cleanup
+### Step 11 — Keep Temp Directory
 
-Remove the temporary clone directory:
+**Do NOT delete the cloned `projects-doc` directory.** The clone at `$DOCS_CLONE_DIR` is kept on disk for future reference and reuse. Skipping the deletion avoids re-cloning the entire docs repository in subsequent sync runs.
 
-```bash
-rm -rf "$tmpdir"
+---
+
+### REVIEW AND FINAL SUMMARY
+
+### Step 12 — List All Changes for User Review
+
+**Before outputting the final summary**, present a comprehensive change review so the user can audit the results. List both screenshot changes (from the user manual workflow) and architecture document changes (from the docs repo commit).
+
+#### 12a — Screenshot Change Review
+
+Collect all screenshot status information from Steps 3 and 4, and present it as a structured table:
+
+```
+📸 用户手册截图变更：
+| 序号 | 章节 | 截图文件 | 状态 | 备注 |
+|------|------|----------|------|------|
+| 1 | 登录页面 | login.png | ✅ 已自动捕获 | - |
+| 2 | 数据看板 | dashboard.png | ⚠️ 需手动截图 | 自动捕获失败：页面加载超时 |
+| 3 | 用户管理 | user-list.png | 📌 保留（未变更） | - |
 ```
 
-Output a final summary:
+- **Statuses**: `✅ 已自动捕获` (auto-captured), `⚠️ 需手动截图` (failed/skipped, needs manual), `📌 保留（未变更）` (kept from legacy, update mode only), `🆕 新增` (new placeholder, generate mode)
+- **If no screenshots at all** (non-GUI project): output `📸 无需截图（非 GUI 项目）`
+- **If all screenshots were kept** (update mode, no new): output `📸 所有截图保留自上一版本，无新增或替换`
+
+#### 12b — Architecture Document Change Review
+
+Show the file changes that were committed to the docs repo. Run the following in the docs clone:
+
+```bash
+cd "$DOCS_CLONE_DIR"
+git show --stat HEAD
+```
+
+Present the output as:
+
+```
+📄 架构文档变更（projects-doc commit: <commit-hash-short>）：
+[git show --stat output showing changed files with +/- line counts]
+
+文档目录：$PROJECT_DOC_DIR/
+变更文件：
+  - <file1> (+XX -YY lines)
+  - <file2> (+XX -YY lines)
+  ...
+```
+
+**If no files were changed** (e.g., writing-docs detected no updates needed), output:
+```
+📄 架构文档：无变更（writing-docs 未检测到需要更新的内容）
+```
+
+#### 12c — Output Final Summary
+
+After the change review, output the final summary:
 
 ```
 同步完成：
 - 用户手册：yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/ [含 Markdown 和 HTML 版本]
-- 截图状态：[无需截图] 或 [已自动捕获] 或 [部分自动捕获，剩余需手动：将图片分别放入 Markdown 和 HTML 的截图目录后刷新即可]
-- 架构文档：[docs repo path] 已更新
+- 截图状态：[无需截图] 或 [全部自动捕获] 或 [部分自动捕获：X/Y 成功，详见上方截图变更表]
+- 架构文档：[docs repo path] 已更新（详见上方文档变更）
 - 项目仓库：已推送至 auto-workflow 分支
 - 文档仓库：已推送至 auto-workflow 分支
+- 文档本地副本：$DOCS_CLONE_DIR（已保留，未删除）
 ```
 
 ## Common Mistakes
@@ -392,14 +459,15 @@ Output a final summary:
 | Treating auto-capture as all-or-nothing | Auto-capture may partially succeed. Proceed to HTML generation with whatever screenshots were captured; only notify user about the remaining ones |
 | Proceeding with HTML when screenshots are missing | Always generate both Markdown and HTML regardless; image reference paths must be correct so user only needs to drop files in |
 | Not computing the correct version directory name | Extract version-name from project source using writing-user-manual's method (Step 1a), then combine with YYMMDD-HHmmss timestamp |
-| Cloning docs repo into project directory | Always clone to a temp directory (`mktemp -d`), never inside the project |
+| Cloning docs repo into project directory | Always clone to the fixed cache directory (`$TMPDIR/projects-doc-clone`), never inside the project |
 | Not matching the project name correctly | Match by project directory basename or explicit mapping in the docs repo |
 | Pushing only one repository | Both the project repo AND the docs repo must be pushed |
 | Pushing to wrong branch | Both repos must push to `auto-workflow`, NOT `main` |
-| Leaving temp clone on disk | Always `rm -rf` the temp directory after pushing |
+| Deleting the cloned docs directory | Keep the cloned `projects-doc` directory on disk — do NOT `rm -rf` it. Reusing an existing clone avoids re-cloning the entire docs repo in future sync runs |
 | Missing or incorrect image reference paths | After HTML generation, verify both Markdown and HTML image references are consistent with the actual output directory structure; generating-html-manual handles path conversion per its own conventions |
 | Using different version names for manual and HTML | Both must use the same `<version-name>-YYMMDD-HHmmss/` directory — HTML output goes inside it as `html/` |
 | Using `git push --force` for docs repo | **NEVER** use `--force`, `-f`, or `--force-with-lease`. If push fails, `git pull` → resolve conflicts → re-commit → push again. Repeat until successful. |
 | Pushing docs repo without `git pull` first | Always `git pull origin auto-workflow` BEFORE committing and pushing. This prevents unnecessary conflicts and ensures the docs repo is up to date. |
 | Discarding content during conflict resolution | When resolving conflicts in `projects-doc`, maximally preserve ALL content from BOTH sides. Never delete or discard content — keep everything from both remote and local versions. |
 | Not specifying which doc directory changed in commit message | The commit message must identify the project AND the specific doc directory: `docs: update <project>/<doc-dir> documentation` |
+| Skipping user review of changes at end | Always present Step 12 change review (screenshot status table + docs git diff) before final summary. This lets the user audit all changes before the workflow concludes |
