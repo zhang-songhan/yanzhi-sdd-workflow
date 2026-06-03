@@ -121,6 +121,8 @@ Invoke `yanzhi-user-manual-generator:writing-user-manual` via the Skill tool. Th
 
 Specify the output path as `yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/` (replace with the actual computed version string).
 
+> The `yanzhi-user-manual-generator:writing-user-manual` skill will invoke auto capture skill to take screenshots.
+
 ### Step 3 — Convert to HTML
 
 Invoke `yanzhi-user-manual-generator:generating-html-manual` via the Skill tool, pointing to the newly created/updated markdown manual at `yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/<manual-filename>.md`.
@@ -169,9 +171,11 @@ Then stop. Do not proceed.
 
 ### Step 6 — Invoke writing-docs
 
-Invoke `yanzhi-docs-generator:writing-docs` via the Skill tool. This skill will detect whether existing docs exist and perform either a full generation or delta update (based on git diff of the last 3 commits).
+Invoke `yanzhi-docs-generator:writing-docs` via the Skill tool. This skill will detect whether existing docs exist and perform either a full generation or delta update (based on git diff of the last 3 commits). The writing-docs skill handles GUI detection, screenshot placeholders, and auto-capture internally.
 
 The writing-docs skill will update the project's doc files in-place within the cloned docs repo.
+
+> The ``yanzhi-docs-generator:writing-docs`` skill will invoke auto capture skill to take screenshots.
 
 ---
 
