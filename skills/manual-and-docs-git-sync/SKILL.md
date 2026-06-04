@@ -69,6 +69,12 @@ This skill depends on four external plugin skills:
 
 Execute each step in order. If any prerequisite check fails, stop immediately and report the missing skill.
 
+## Sub-Skill Blocking Rule
+
+When `writing-user-manual` or `writing-docs` encounters a situation where it **cannot proceed** (e.g., cannot find commit history, source code is broken or incomplete, version name mismatch, ambiguous inputs the skill cannot resolve on its own), **pause immediately** and present the issue to the user for confirmation. Do NOT guess, work around, or auto-resolve these blockers.
+
+**Screenshot placeholder exemption:** The `writing-user-manual` skill may insert screenshot placeholders by default without user confirmation. Screenshot-related decisions are NOT blockers — allow them automatically. Only pause when the sub-skill signals it cannot complete its core generation/update task.
+
 ### Step 0 — Validate Dependencies
 
 Check that ALL of the following skills exist in the current session:
@@ -123,6 +129,8 @@ Specify the output path as `yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/` (r
 
 > The `yanzhi-user-manual-generator:writing-user-manual` skill will invoke auto capture skill to take screenshots.
 
+**If `writing-user-manual` cannot proceed** (e.g., cannot find commit history, source code issues, version mismatch), pause and ask the user for confirmation. Screenshot placeholder insertion is exempt — allow by default without asking.
+
 ### Step 3 — Convert to HTML
 
 Invoke `yanzhi-user-manual-generator:generating-html-manual` via the Skill tool, pointing to the newly created/updated markdown manual at `yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/<manual-filename>.md`.
@@ -170,6 +178,8 @@ Invoke `yanzhi-docs-generator:writing-docs` via the Skill tool. This skill will 
 The writing-docs skill will update the project's doc files in-place within the cloned docs repo.
 
 > The ``yanzhi-docs-generator:writing-docs`` skill will invoke auto capture skill to take screenshots.
+
+**If `writing-docs` cannot proceed** (e.g., cannot find commit history, source code issues, cannot determine diff baseline), pause and ask the user for confirmation.
 
 ---
 
@@ -338,3 +348,4 @@ Include:
 | Discarding content during conflict resolution | When resolving conflicts in `projects-doc`, maximally preserve ALL content from BOTH sides. Never delete or discard content — keep everything from both remote and local versions. |
 | Not specifying which doc directory changed in commit message | The commit message must identify the project AND the specific doc directory: `docs: update <project>/<doc-dir> documentation` |
 | Skipping user review of changes at end | Always present Step 10 change review (docs git diff) before final summary. This lets the user audit all changes before the workflow concludes |
+| Auto-continuing when `writing-user-manual` or `writing-docs` hits a blocker | Pause and ask the user when sub-skills cannot proceed (commit not found, source code issues, etc.). Screenshot placeholders are exempt — allow by default |
