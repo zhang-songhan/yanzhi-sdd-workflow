@@ -320,13 +320,37 @@ After the change review, output the final summary:
 
 #### 10c — Screenshot Summary
 
-List all screenshots captured during the workflow, organized by category. Show the file path and status for each screenshot.
+List **each screenshot individually** — do NOT summarize with a count (e.g., "3 screenshots captured"). The user must be able to see the exact file path and status of every single screenshot.
 
-Include:
+Use this format:
 
-- Architecture Document Screenshots
+```
+📸 截图清单：
 
-- User Manual Screenshots
+架构文档截图：
+| 文件路径 | 状态 |
+|---------|------|
+| docs/images/screenshot-1.png | ✅ 已保存 |
+| docs/images/screenshot-2.png | ✅ 已保存 |
+| docs/images/screenshot-3.png | ⚠️ 占位符（当前无 GUI 截图，已插入默认占位符） |
+
+用户手册截图：
+| 文件路径 | 状态 |
+|---------|------|
+| yanzhi-user-manual/v123-260604-150000/images/screenshot-1.png | ✅ 已保存 |
+| yanzhi-user-manual/v123-260604-150000/images/screenshot-2.png | ✅ 已保存 |
+```
+
+**Status values:**
+- `✅ 已保存` — screenshot was captured and saved to disk
+- `⚠️ 占位符（原因）` — placeholder was inserted (explain why: e.g., no GUI available, capture failed, etc.)
+- `❌ 失败（原因）` — capture was attempted but failed
+
+**Rules:**
+- Each screenshot gets its own row — never merge multiple screenshots into one row
+- Never output a bare count like "共 5 张截图"
+- If a category has zero screenshots, output `（无截图）` under that category header
+- Group by category (Architecture Docs first, then User Manual), in the order they were captured
 
 > Screenshot capture is handled internally by `writing-user-manual` and `writing-docs` skills. This step only reports what was captured — it does NOT trigger new screenshots.
 
@@ -349,3 +373,4 @@ Include:
 | Not specifying which doc directory changed in commit message | The commit message must identify the project AND the specific doc directory: `docs: update <project>/<doc-dir> documentation` |
 | Skipping user review of changes at end | Always present Step 10 change review (docs git diff) before final summary. This lets the user audit all changes before the workflow concludes |
 | Auto-continuing when `writing-user-manual` or `writing-docs` hits a blocker | Pause and ask the user when sub-skills cannot proceed (commit not found, source code issues, etc.). Screenshot placeholders are exempt — allow by default |
+| Summarizing screenshots with a count ("共 5 张") instead of listing individually | Each screenshot must get its own row with file path and status — never collapse into a number |
