@@ -135,24 +135,18 @@ The HTML output will be written to `yanzhi-user-manual/<version-name>-YYMMDD-HHm
 
 ### Step 4 — Clone the Documentation Repository
 
-Clone the company documentation repository to a local cache directory. Use a fixed path so the clone can be reused across sync runs:
+Clone the company documentation repository to a local temp directory. **Always clone fresh from the `main` branch** — never reuse a previous clone. The directory name includes a timestamp for traceability:
 
 ```bash
 TMPDIR="${TMPDIR:-/tmp}"
-DOCS_CLONE_DIR="$TMPDIR/projects-doc-clone"
+TIMESTAMP=$(date +%y%m%d%H%M%S)
+DOCS_CLONE_DIR="$TMPDIR/projects-doc-$TIMESTAMP"
 
-if [ -d "$DOCS_CLONE_DIR/.git" ]; then
-  # Clone already exists — fetch latest changes
-  cd "$DOCS_CLONE_DIR"
-  git fetch origin
-  cd "$OLDPWD"
-else
-  # First time — clone fresh
-  git clone http://192.168.1.237:8080/doc/projects-doc "$DOCS_CLONE_DIR"
-fi
+# Always clone fresh from main branch — do NOT reuse previous clones
+git clone -b main http://192.168.1.237:8080/doc/projects-doc "$DOCS_CLONE_DIR"
 ```
 
-**If the clone or fetch fails**, output the error message and stop. Do not proceed.
+**If the clone fails**, output the error message and stop. Do not proceed.
 
 ### Step 5 — Find the Project Documentation Directory
 
@@ -264,7 +258,7 @@ If `git push` fails (e.g., rejected because remote has newer commits):
 
 ### Step 9 — Keep Temp Directory
 
-**Do NOT delete the cloned `projects-doc` directory.** The clone at `$DOCS_CLONE_DIR` is kept on disk for future reference and reuse. Skipping the deletion avoids re-cloning the entire docs repository in subsequent sync runs.
+**Do NOT delete the cloned `projects-doc` directory.** The clone at `$DOCS_CLONE_DIR` is kept on disk for future reference. Each sync run creates a fresh clone with a timestamped directory name (`projects-doc-YYMMDDHHmmss`), so there is no risk of stale data from previous runs.
 
 ---
 
@@ -314,17 +308,30 @@ After the change review, output the final summary:
 - 文档本地副本：$DOCS_CLONE_DIR（已保留，未删除）
 ```
 
+#### 10c — Screenshot Summary
+
+List all screenshots captured during the workflow, organized by category. Show the file path and status for each screenshot.
+
+Include:
+
+- Architecture Document Screenshots
+
+- User Manual Screenshots
+
+> Screenshot capture is handled internally by `writing-user-manual` and `writing-docs` skills. This step only reports what was captured — it does NOT trigger new screenshots.
+
 ## Common Mistakes
 
 | Mistake | Correction |
 |---------|------------|
 | Skipping dependency check | Always validate all 4 required skills exist before starting |
 | Not computing the correct version directory name | Extract version-name from project source using writing-user-manual's method (Step 1a), then combine with YYMMDD-HHmmss timestamp |
-| Cloning docs repo into project directory | Always clone to the fixed cache directory (`$TMPDIR/projects-doc-clone`), never inside the project |
+| Cloning docs repo into project directory | Always clone to the temp directory with timestamp (`$TMPDIR/projects-doc-YYMMDDHHmmss`), never inside the project |
 | Not matching the project name correctly | Match by project directory basename or explicit mapping in the docs repo |
 | Pushing only one repository | Both the project repo AND the docs repo must be pushed |
 | Pushing to wrong branch | Both repos must push to `auto-workflow`, NOT `main` |
-| Deleting the cloned docs directory | Keep the cloned `projects-doc` directory on disk — do NOT `rm -rf` it. Reusing an existing clone avoids re-cloning the entire docs repo in future sync runs |
+| Reusing a previous docs clone | Always clone fresh. The `git clone` command in Step 4 creates a new timestamped directory (`projects-doc-YYMMDDHHmmss`) — never use `projects-doc-clone` or any existing directory |
+| Deleting the cloned docs directory | Keep the cloned `projects-doc-YYMMDDHHmmss` directory on disk for future reference — do NOT `rm -rf` it |
 | Using different version names for manual and HTML | Both must use the same `<version-name>-YYMMDD-HHmmss/` directory — HTML output goes inside it as `html/` |
 | Using `git push --force` for docs repo | **NEVER** use `--force`, `-f`, or `--force-with-lease`. If push fails, `git pull` → resolve conflicts → re-commit → push again. Repeat until successful. |
 | Pushing docs repo without `git pull` first | Always `git pull origin auto-workflow` BEFORE committing and pushing. This prevents unnecessary conflicts and ensures the docs repo is up to date. |
