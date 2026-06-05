@@ -1,11 +1,59 @@
 ---
 name: manual-and-docs-git-sync
-description: Use after a brainstorming-specify-tdd workflow completes to automatically update user manuals (with HTML conversion), synchronize architecture docs, and push both the project repo and the documentation repo to the auto-workflow branch. Screenshot capture is handled internally by writing-user-manual. Triggers on `/manual-and-docs-git-sync` or when the user asks to "sync manuals and docs" after a feature workflow.
+description: Use after a brainstorming-specify-tdd workflow completes, when user manuals and architecture docs need synchronization with git push to the auto-workflow branch. Triggers on `/manual-and-docs-git-sync` or when the user asks to "sync manuals and docs" after a feature workflow.
 ---
 
 # Manual and Docs Git Sync
 
-After a brainstorming-specify-tdd workflow completes, automatically update the user manual, convert it to HTML, refresh architecture documentation, and push both repos. Screenshot capture (including auto-capture for web apps) is handled internally by the `writing-user-manual` skill.
+After a brainstorming-specify-tdd workflow completes, automatically update the user manual, convert it to HTML, refresh architecture documentation, and push both repos.
+
+## Foundational Principle
+
+**Violating the letter of these rules is violating the spirit of these rules.**
+
+This workflow exists because each step prevents a known failure mode. Skipping any step — even one that seems unnecessary right now — has caused data loss, broken docs, or pushed to the wrong branch. The steps are not optional. They are not "nice-to-have." They are the minimum safe path.
+
+If you find yourself thinking "this step doesn't apply here" or "the user said I could skip this," you are rationalizing. See the table below.
+
+## Rationalization Table — Why You're About to Make a Mistake
+
+| Your Thought | Reality |
+|---|---|
+| "The user says deps are installed, I can skip checking" | Skills can be missing despite user belief. Check takes 5 seconds. A missing skill discovered at Step 2 wastes minutes. |
+| "I'll reuse the clone from last time" | The old clone may be on the wrong branch, have uncommitted changes, or be stale. Always clone fresh. |
+| "Nobody else works on this branch, skip git pull" | CI/CD, automated processes, or other sessions can push. Pull first, every time. |
+| "I'll just git add -A, it's faster" | `git add -A` stages unrelated files from other projects in a shared docs repo. Target the specific project directory only. |
+| "Push failed — I'll use --force to get it through" | Force push overwrites others' work silently. Pull, resolve, re-push. Never force. |
+| "I'll delete the temp clone, it's messy" | The clone is timestamped evidence of what was pushed. Keep it for traceability. |
+| "The user was here for the session, they know what changed" | Memory is fallible. The change review is the authoritative record. Always present it. |
+| "The user said they don't need the screenshot summary" | The summary is required output — it documents what was captured vs placeholder. Skip it and you lose visibility into missing assets. |
+| "We're almost done, let's just push and finish" | Rushing the final steps is when the worst mistakes happen. The last 10% of steps prevent 90% of incidents. |
+| "I'll write a quick commit message, the diff speaks for itself" | In a shared docs repo, commit messages must identify which project changed. Generic messages make `git log` useless for other teams. |
+| "I'll just do the manual part, the docs can wait" | Partial execution is still a violation. The workflow is atomic — all 10 steps or stop at the first failure. Half-synced state is worse than no sync. |
+
+## Red Flags — STOP and Re-Read the Rules
+
+If any of these thoughts cross your mind, you are about to skip a mandatory step:
+
+- "This step is just a formality"
+- "The user said I could skip this"
+- "I know this environment, this check is unnecessary"
+- "We're in a hurry, I'll do the minimum"
+- "I already verified this implicitly"
+- "It's faster to..."
+- "I'll just this once..."
+- "I'll do the manual now, docs later"
+- "Half the workflow is better than nothing"
+
+**All of these mean: Go back. Read the step. Execute it exactly as written.**
+
+## Prerequisites
+
+This skill depends on four external plugin skills:
+
+- **yanzhi-user-manual-generator** — provides `writing-user-manual` and `generating-html-manual`
+- **yanzhi-docs-generator** — provides `writing-docs`
+- **project-version-workflow** — provides `update-commit-bypass`
 
 ## Decision Flow
 
@@ -57,17 +105,9 @@ digraph sync_flow {
 }
 ```
 
-## Prerequisites
-
-This skill depends on four external plugin skills:
-
-- **yanzhi-user-manual-generator** — provides `writing-user-manual` and `generating-html-manual`
-- **yanzhi-docs-generator** — provides `writing-docs`
-- **project-version-workflow** — provides `update-commit-bypass`
-
 ## Step-by-Step Workflow
 
-Execute each step in order. If any prerequisite check fails, stop immediately and report the missing skill.
+Execute each step in order. If any prerequisite check fails, stop immediately and report the missing skill. **No step is skippable** — not even if the user says so, not even if you're in a hurry, not even if "you know the environment." **No partial execution** — completing only the user manual workflow (Steps 1-3) without the docs workflow (Steps 4-10) is a violation. All 10 steps must execute, in order, every time.
 
 ## Sub-Skill Blocking Rule
 
@@ -85,6 +125,12 @@ Check that ALL of the following skills exist in the current session:
 4. `project-version-workflow:update-commit-bypass`
 
 **If any of the 4 required skills is missing**, output the missing skill name(s) and stop.
+
+**This step is MANDATORY. No exceptions:**
+- Do NOT skip because "the user says deps are installed" — the user may be mistaken, and discovering a missing skill at Step 2 is more disruptive than the 5-second check now
+- Do NOT skip because "they were here last session" — plugin configurations change between sessions
+- Do NOT "check implicitly by invoking" — explicitly validate before any work begins
+- Do NOT trust that "there's no downside risk" — the downside is wasted work when a skill fails mid-workflow
 
 ---
 
@@ -156,6 +202,12 @@ git clone -b main http://192.168.1.237:8080/doc/projects-doc "$DOCS_CLONE_DIR"
 
 **If the clone fails**, output the error message and stop. Do not proceed.
 
+**This step is MANDATORY. No exceptions:**
+- Do NOT check if a previous clone exists and reuse it — the old clone may be on the wrong branch, have uncommitted changes, be stale, or contain conflicts from a previous run
+- Do NOT "just pull" an existing clone instead of cloning fresh — a fresh clone guarantees clean state
+- Do NOT skip the timestamp in the directory name — it ensures each run is traceable
+- Do NOT clone into the project directory — always use `$TMPDIR`
+
 ### Step 5 — Find the Project Documentation Directory
 
 In the cloned repository (`$DOCS_CLONE_DIR`), locate the subdirectory that corresponds to the **current project**. Match by:
@@ -177,7 +229,7 @@ Invoke `yanzhi-docs-generator:writing-docs` via the Skill tool. This skill will 
 
 The writing-docs skill will update the project's doc files in-place within the cloned docs repo.
 
-> The ``yanzhi-docs-generator:writing-docs`` skill will invoke auto capture skill to take screenshots.
+> The `yanzhi-docs-generator:writing-docs` skill will invoke auto capture skill to take screenshots.
 
 **If `writing-docs` cannot proceed** (e.g., cannot find commit history, source code issues, cannot determine diff baseline), pause and ask the user for confirmation.
 
@@ -216,7 +268,7 @@ Invoke `project-version-workflow:update-commit-bypass` via the Skill tool. The s
 
 Do NOT use `update-commit-bypass` for the docs repo. Instead, manually commit and push with a commit message that **explicitly identifies which project's documentation was updated**.
 
-First, capture the project name and doc directory path (same name used to match the docs directory in Step 5):
+First, capture the project name and doc directory path:
 
 ```bash
 PROJECT_NAME=$(basename $(pwd))
@@ -228,7 +280,7 @@ Then execute the following sequence in the docs repo. **This sequence is MANDATO
 ```bash
 cd "$DOCS_CLONE_DIR"
 
-# Step 8a — Pull latest changes from remote FIRST
+# Step 8a — Pull latest changes from remote FIRST (MANDATORY, no exceptions)
 git pull origin auto-workflow
 
 # Step 8b — If git pull reports conflicts, resolve them immediately
@@ -240,7 +292,7 @@ git pull origin auto-workflow
 # - After resolving, mark conflicts as resolved:
 #   git add <resolved-files>
 
-# Step 8c — Stage all changes in the project's doc directory
+# Step 8c — Stage ONLY the project's doc directory (NOT git add -A)
 git add "$PROJECT_DOC_DIR"/
 
 # Step 8d — Commit with project-identifying message
@@ -251,11 +303,21 @@ git commit -m "docs: update $PROJECT_NAME/$PROJECT_DOC_DIR documentation"
 git push origin auto-workflow
 ```
 
+**Step 8a is MANDATORY. No exceptions:**
+- Do NOT skip `git pull` because "nobody else works on this branch" — CI/CD pipelines, automated processes, or other sessions can push to `auto-workflow` at any time
+- Do NOT skip `git pull` because "the user said they're the only one" — the user may not know about automated pushes
+- Do NOT skip `git pull` to save time — the 10 seconds it takes prevents merge conflicts that waste minutes
+
+**Step 8c is MANDATORY. No exceptions:**
+- Do NOT use `git add -A` or `git add .` — the docs repo contains multiple projects' documentation; `-A` stages unrelated files
+- Do NOT use `git add --all` — same problem
+- Stage ONLY `$PROJECT_DOC_DIR/` — the specific directory identified in Step 5
+
 The commit message format is: `docs: update <project-name>/<doc-directory> documentation`
 
 This ensures anyone browsing the `projects-doc` commit history can immediately see which project and which doc directory was updated.
 
-**⚠️ CRITICAL: NEVER use `git push --force` (or `git push -f` or `git push --force-with-lease`).**
+**⚠️ CRITICAL: NEVER use `git push --force` (or `git push -f` or `git push --force-with-lease`). No exceptions.**
 
 If `git push` fails (e.g., rejected because remote has newer commits):
 1. Run `git pull origin auto-workflow` again to fetch the latest remote changes
@@ -264,11 +326,24 @@ If `git push` fails (e.g., rejected because remote has newer commits):
 4. Run `git push origin auto-workflow` again
 5. Repeat this loop until push succeeds — **never bypass with force push**
 
+**Force push is never acceptable. No exceptions:**
+- Not even "just this once"
+- Not even "I know there's only one commit difference"
+- Not even "it's faster than resolving conflicts"
+- Not even "the user said to"
+
 **Why not use `update-commit-bypass` for the docs repo?** The `update-commit-bypass` skill auto-generates commit messages from the diff content. Since `projects-doc` is a shared repository containing documentation for multiple projects, a generic auto-generated message like "update architecture docs" would not indicate which project changed. A manual commit with an explicit project identifier is required.
 
 ### Step 9 — Keep Temp Directory
 
-**Do NOT delete the cloned `projects-doc` directory.** The clone at `$DOCS_CLONE_DIR` is kept on disk for future reference. Each sync run creates a fresh clone with a timestamped directory name (`projects-doc-YYMMDDHHmmss`), so there is no risk of stale data from previous runs.
+**Do NOT delete the cloned `projects-doc` directory.**
+
+**This step is MANDATORY. No exceptions:**
+- Do NOT `rm -rf` the clone because "temp directories are messy" — each clone is timestamped and provides traceability for what was pushed
+- Do NOT delete it because "disk space" — the clone is small and the timestamped name prevents accumulation confusion
+- Do NOT delete it because "the push succeeded, we don't need it" — the clone is evidence of exactly what was pushed, useful for audit and rollback
+
+The clone at `$DOCS_CLONE_DIR` is kept on disk for future reference. Each sync run creates a fresh clone with a timestamped directory name (`projects-doc-YYMMDDHHmmss`), so there is no risk of stale data from previous runs.
 
 ---
 
@@ -277,6 +352,11 @@ If `git push` fails (e.g., rejected because remote has newer commits):
 ### Step 10 — List All Changes for User Review
 
 **Before outputting the final summary**, present a comprehensive change review so the user can audit the architecture document changes.
+
+**This step is MANDATORY. No exceptions:**
+- Do NOT skip because "the user was here the whole session, they know what changed" — memory is fallible; the change review is the authoritative record
+- Do NOT skip because "the user said they'll check later" — the review is part of the workflow's quality gate, not optional user preference
+- Do NOT replace with a quick summary like "docs updated, done" — the user needs to see exact file paths and line counts
 
 #### 10a — Architecture Document Change Review
 
@@ -322,6 +402,10 @@ After the change review, output the final summary:
 
 List **each screenshot individually** — do NOT summarize with a count (e.g., "3 screenshots captured"). The user must be able to see the exact file path and status of every single screenshot.
 
+**This step is MANDATORY. No exceptions:**
+- Do NOT skip because "the user said they don't need screenshots" — the summary documents what was captured vs placeholder, providing visibility into missing assets
+- Do NOT collapse into a count like "共 5 张截图" — each screenshot needs its own row
+
 Use this format:
 
 ```
@@ -358,19 +442,21 @@ Use this format:
 
 | Mistake | Correction |
 |---------|------------|
-| Skipping dependency check | Always validate all 4 required skills exist before starting |
+| Skipping dependency check because "user says deps are installed" | Always validate all 4 required skills exist before starting. The user may be mistaken. |
 | Not computing the correct version directory name | Extract version-name from project source using writing-user-manual's method (Step 1a), then combine with YYMMDD-HHmmss timestamp |
+| Reusing a previous docs clone because "it's faster" | Always clone fresh with a new timestamped directory. Old clones may be on wrong branches or have stale data. |
 | Cloning docs repo into project directory | Always clone to the temp directory with timestamp (`$TMPDIR/projects-doc-YYMMDDHHmmss`), never inside the project |
 | Not matching the project name correctly | Match by project directory basename or explicit mapping in the docs repo |
 | Pushing only one repository | Both the project repo AND the docs repo must be pushed |
 | Pushing to wrong branch | Both repos must push to `auto-workflow`, NOT `main` |
-| Reusing a previous docs clone | Always clone fresh. The `git clone` command in Step 4 creates a new timestamped directory (`projects-doc-YYMMDDHHmmss`) — never use `projects-doc-clone` or any existing directory |
-| Deleting the cloned docs directory | Keep the cloned `projects-doc-YYMMDDHHmmss` directory on disk for future reference — do NOT `rm -rf` it |
+| Using `git add -A` or `git add .` in docs repo | Stage ONLY `$PROJECT_DOC_DIR/` — the docs repo contains multiple projects |
+| Skipping `git pull` because "nobody else pushes here" | Always `git pull origin auto-workflow` BEFORE committing. CI/CD or other sessions can push at any time. |
+| Deleting the cloned docs directory because "temp dirs are messy" | Keep the cloned `projects-doc-YYMMDDHHmmss` directory — it's evidence of what was pushed |
 | Using different version names for manual and HTML | Both must use the same `<version-name>-YYMMDD-HHmmss/` directory — HTML output goes inside it as `html/` |
-| Using `git push --force` for docs repo | **NEVER** use `--force`, `-f`, or `--force-with-lease`. If push fails, `git pull` → resolve conflicts → re-commit → push again. Repeat until successful. |
-| Pushing docs repo without `git pull` first | Always `git pull origin auto-workflow` BEFORE committing and pushing. This prevents unnecessary conflicts and ensures the docs repo is up to date. |
-| Discarding content during conflict resolution | When resolving conflicts in `projects-doc`, maximally preserve ALL content from BOTH sides. Never delete or discard content — keep everything from both remote and local versions. |
+| Using `git push --force` for docs repo | **NEVER** use `--force`, `-f`, or `--force-with-lease`. Pull → resolve → re-push. Repeat until successful. |
+| Discarding content during conflict resolution | When resolving conflicts in `projects-doc`, maximally preserve ALL content from BOTH sides |
 | Not specifying which doc directory changed in commit message | The commit message must identify the project AND the specific doc directory: `docs: update <project>/<doc-dir> documentation` |
-| Skipping user review of changes at end | Always present Step 10 change review (docs git diff) before final summary. This lets the user audit all changes before the workflow concludes |
-| Auto-continuing when `writing-user-manual` or `writing-docs` hits a blocker | Pause and ask the user when sub-skills cannot proceed (commit not found, source code issues, etc.). Screenshot placeholders are exempt — allow by default |
+| Skipping user review of changes because "user already knows" | Always present Step 10 change review before final summary — it's the authoritative record |
+| Auto-continuing when `writing-user-manual` or `writing-docs` hits a blocker | Pause and ask the user when sub-skills cannot proceed. Screenshot placeholders are exempt. |
 | Summarizing screenshots with a count ("共 5 张") instead of listing individually | Each screenshot must get its own row with file path and status — never collapse into a number |
+| Skipping screenshot summary because "user doesn't need it" | The summary documents what was captured vs placeholder — it's required visibility, not optional output |
