@@ -8,7 +8,7 @@
       "name": "yanzhi-sdd-workflow",
       "source": "./",
       "description": "A brainstorming-specify-tdd workflow, powered by Superpowers and SpecKit.",
-      "version": "v260605-115039",
+      "version": "v260608-091850",
       "author": {
         "name": "ATreep"
       }
