@@ -29,7 +29,10 @@ If you find yourself thinking "this step doesn't apply here" or "the user said I
 | "The user said they don't need the screenshot summary" | The summary is required output — it documents what was captured vs placeholder. Skip it and you lose visibility into missing assets. |
 | "We're almost done, let's just push and finish" | Rushing the final steps is when the worst mistakes happen. The last 10% of steps prevent 90% of incidents. |
 | "I'll write a quick commit message, the diff speaks for itself" | In a shared docs repo, commit messages must identify which project changed. Generic messages make `git log` useless for other teams. |
-| "I'll just do the manual part, the docs can wait" | Partial execution is still a violation. The workflow is atomic — all 10 steps or stop at the first failure. Half-synced state is worse than no sync. |
+| "I'll just do the manual part, the docs can wait" | Partial execution is still a violation. The workflow is atomic — all 12 steps or stop at the first failure. Half-synced state is worse than no sync. |
+| "The user asked to sync, so they want me to push" | Syncing = generating docs. Committing/pushing is a separate action. The user may want to review before pushing. Always confirm. |
+| "I'll commit and push, the user can revert if they don't like it" | Reverting pushed commits is messy and public. Get confirmation BEFORE pushing, not forgiveness after. |
+| "The user isn't responding, I'll push and let them know" | Never assume consent from silence. Wait for explicit confirmation. |
 
 ## Red Flags — STOP and Re-Read the Rules
 
@@ -44,6 +47,9 @@ If any of these thoughts cross your mind, you are about to skip a mandatory step
 - "I'll just this once..."
 - "I'll do the manual now, docs later"
 - "Half the workflow is better than nothing"
+- "The user said sync, so they must want me to push"
+- "I'll push first and ask later"
+- "They'll see the push notification anyway"
 
 **All of these mean: Go back. Read the step. Execute it exactly as written.**
 
@@ -76,6 +82,8 @@ digraph sync_flow {
     project_found [label="Project dir\nfound?", shape=diamond];
     stop_noproject [label="STOP: Report\nproject not found", shape=box];
     invoke_docs [label="Invoke yanzhi-docs-\ngenerator:writing-docs", shape=box];
+    confirm_push [label="Present changes\nAsk user: commit\n& push?", shape=diamond];
+    stop_nopush [label="STOP: User declined\ncommit & push.\nOutput local paths.", shape=box];
     switch_branch [label="Ensure auto-workflow\nbranch in both repos", shape=box];
     push_project [label="Push project repo\nto auto-workflow", shape=box];
     push_docs [label="Push docs repo\nto auto-workflow", shape=box];
@@ -97,7 +105,9 @@ digraph sync_flow {
     find_project -> project_found;
     project_found -> stop_noproject [label="no"];
     project_found -> invoke_docs [label="yes"];
-    invoke_docs -> switch_branch;
+    invoke_docs -> confirm_push;
+    confirm_push -> stop_nopush [label="user declines"];
+    confirm_push -> switch_branch [label="user confirms"];
     switch_branch -> push_project;
     push_project -> push_docs;
     push_docs -> review_changes;
@@ -107,7 +117,7 @@ digraph sync_flow {
 
 ## Step-by-Step Workflow
 
-Execute each step in order. If any prerequisite check fails, stop immediately and report the missing skill. **No step is skippable** — not even if the user says so, not even if you're in a hurry, not even if "you know the environment." **No partial execution** — completing only the user manual workflow (Steps 1-3) without the docs workflow (Steps 4-10) is a violation. All 10 steps must execute, in order, every time.
+Execute each step in order. If any prerequisite check fails, stop immediately and report the missing skill. **No step is skippable** — not even if the user says so, not even if you're in a hurry, not even if "you know the environment." **No partial execution** — completing only the user manual workflow (Steps 1-3) without the docs workflow (Steps 4-12) is a violation. All 12 steps must execute, in order, every time.
 
 ## Sub-Skill Blocking Rule
 
@@ -185,8 +195,6 @@ The HTML output will be written to `yanzhi-user-manual/<version-name>-YYMMDD-HHm
 
 ---
 
-### ARCHITECTURE DOCS WORKFLOW
-
 ### Step 4 — Clone the Documentation Repository
 
 Clone the company documentation repository to a local temp directory. **Always clone fresh from the `main` branch** — never reuse a previous clone. The directory name includes a timestamp for traceability:
@@ -235,9 +243,73 @@ The writing-docs skill will update the project's doc files in-place within the c
 
 ---
 
+### COMMIT AND PUSH CONFIRMATION
+
+### Step 7 — Ask User Whether to Commit and Push
+
+**This step is MANDATORY. Do NOT commit or push without explicit user confirmation.**
+
+After the user manual and architecture docs have been generated/updated, **stop and present the summary of changes** to the user. Ask whether they want to commit and push both repositories to the `auto-workflow` branch.
+
+**This step is MANDATORY. No exceptions:**
+- Do NOT auto-commit or auto-push because "the user asked to sync" — syncing means generating docs; committing and pushing is a separate action that requires explicit confirmation
+- Do NOT commit because "the user said yes last time" — each session requires fresh confirmation
+- Do NOT push because "everything looks good" — only the user can decide when to push
+- Do NOT skip confirmation because "the user isn't available" — wait for confirmation; never proceed without it
+- Do NOT commit/push only one repo because "docs didn't change" — the confirmation covers BOTH repos together
+
+**Presentation format:**
+
+```
+📋 待提交的变更：
+
+项目仓库（源代码 + 用户手册）：
+  目录：<project-root>
+  分支：auto-workflow
+  用户手册：yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/
+  待提交文件：
+    - <file1> (新增/修改)
+    - <file2> (新增/修改)
+    ...
+
+文档仓库（架构文档）：
+  目录：$DOCS_CLONE_DIR
+  分支：auto-workflow
+  项目文档：$PROJECT_DOC_DIR/
+  待提交文件：
+    - <file1> (新增/修改)
+    - <file2> (新增/修改)
+    ...
+```
+
+Then ask:
+
+```
+是否将以上变更提交并推送到 auto-workflow 分支？（需要用户确认）
+```
+
+**If the user confirms (e.g., "yes", "确认", "推送", "提交"):** Proceed to Step 8.
+
+**If the user declines (e.g., "no", "不推送", "暂不提交"):** Output the final paths and stop:
+
+```
+已跳过提交和推送。本地生成的文件路径：
+
+- 用户手册：<project-root>/yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/
+- 架构文档本地副本：$DOCS_CLONE_DIR（位于临时目录，请注意备份）
+
+如需后续手动提交：
+  项目仓库：cd <project-root> && git checkout auto-workflow && git add yanzhi-user-manual/ && git commit && git push origin auto-workflow
+  文档仓库：cd $DOCS_CLONE_DIR && git add $PROJECT_DOC_DIR/ && git commit && git push origin auto-workflow
+```
+
+**If the user's response is ambiguous**, re-prompt with a clearer question — do NOT interpret ambiguity as consent.
+
+---
+
 ### COMMIT AND PUSH
 
-### Step 7 — Ensure auto-workflow Branch
+### Step 8 — Ensure auto-workflow Branch
 
 Both the **project repository** and the **cloned docs repository** must be on (or create) the `auto-workflow` branch before committing and pushing.
 
@@ -258,7 +330,7 @@ else
 fi
 ```
 
-### Step 8 — Push Both Repositories
+### Step 9 — Push Both Repositories
 
 **Project repository** (the current working directory):
 
@@ -280,10 +352,10 @@ Then execute the following sequence in the docs repo. **This sequence is MANDATO
 ```bash
 cd "$DOCS_CLONE_DIR"
 
-# Step 8a — Pull latest changes from remote FIRST (MANDATORY, no exceptions)
+# Step 9a — Pull latest changes from remote FIRST (MANDATORY, no exceptions)
 git pull origin auto-workflow
 
-# Step 8b — If git pull reports conflicts, resolve them immediately
+# Step 9b — If git pull reports conflicts, resolve them immediately
 # Resolution principle: MAXIMALLY PRESERVE ALL CONTENT from both sides.
 # - For each conflicted file, keep ALL unique content from BOTH remote and local versions
 # - Do NOT delete or discard any content from either side
@@ -292,23 +364,23 @@ git pull origin auto-workflow
 # - After resolving, mark conflicts as resolved:
 #   git add <resolved-files>
 
-# Step 8c — Stage ONLY the project's doc directory (NOT git add -A)
+# Step 9c — Stage ONLY the project's doc directory (NOT git add -A)
 git add "$PROJECT_DOC_DIR"/
 
-# Step 8d — Commit with project-identifying message
+# Step 9d — Commit with project-identifying message
 # The commit message MUST specify which document directory was changed
 git commit -m "docs: update $PROJECT_NAME/$PROJECT_DOC_DIR documentation"
 
-# Step 8e — Push to auto-workflow
+# Step 9e — Push to auto-workflow
 git push origin auto-workflow
 ```
 
-**Step 8a is MANDATORY. No exceptions:**
+**Step 9a is MANDATORY. No exceptions:**
 - Do NOT skip `git pull` because "nobody else works on this branch" — CI/CD pipelines, automated processes, or other sessions can push to `auto-workflow` at any time
 - Do NOT skip `git pull` because "the user said they're the only one" — the user may not know about automated pushes
 - Do NOT skip `git pull` to save time — the 10 seconds it takes prevents merge conflicts that waste minutes
 
-**Step 8c is MANDATORY. No exceptions:**
+**Step 9c is MANDATORY. No exceptions:**
 - Do NOT use `git add -A` or `git add .` — the docs repo contains multiple projects' documentation; `-A` stages unrelated files
 - Do NOT use `git add --all` — same problem
 - Stage ONLY `$PROJECT_DOC_DIR/` — the specific directory identified in Step 5
@@ -334,7 +406,7 @@ If `git push` fails (e.g., rejected because remote has newer commits):
 
 **Why not use `update-commit-bypass` for the docs repo?** The `update-commit-bypass` skill auto-generates commit messages from the diff content. Since `projects-doc` is a shared repository containing documentation for multiple projects, a generic auto-generated message like "update architecture docs" would not indicate which project changed. A manual commit with an explicit project identifier is required.
 
-### Step 9 — Keep Temp Directory
+### Step 10 — Keep Temp Directory
 
 **Do NOT delete the cloned `projects-doc` directory.**
 
@@ -349,7 +421,7 @@ The clone at `$DOCS_CLONE_DIR` is kept on disk for future reference. Each sync r
 
 ### REVIEW AND FINAL SUMMARY
 
-### Step 10 — List All Changes for User Review
+### Step 11 — List All Changes for User Review
 
 **Before outputting the final summary**, present a comprehensive change review so the user can audit the architecture document changes.
 
@@ -358,7 +430,7 @@ The clone at `$DOCS_CLONE_DIR` is kept on disk for future reference. Each sync r
 - Do NOT skip because "the user said they'll check later" — the review is part of the workflow's quality gate, not optional user preference
 - Do NOT replace with a quick summary like "docs updated, done" — the user needs to see exact file paths and line counts
 
-#### 10a — Architecture Document Change Review
+#### 11a — Architecture Document Change Review
 
 Show the file changes that were committed to the docs repo. Run the following in the docs clone:
 
@@ -385,20 +457,40 @@ Present the output as:
 📄 架构文档：无变更（writing-docs 未检测到需要更新的内容）
 ```
 
-#### 10b — Output Final Summary
+#### 11b — Output Final Summary with Explicit Local Paths
 
-After the change review, output the final summary:
+After the change review, output the final summary. **The summary MUST include the full absolute local paths** for both the user manual and the cloned docs repository, so the user knows exactly where the generated files are located on disk.
 
 ```
 同步完成：
-- 用户手册：yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/ [含 Markdown 和 HTML 版本]
-- 架构文档：[docs repo path] 已更新（详见上方文档变更）
+
+本地生成文件路径：
+- 用户手册：<absolute-project-root>/yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/
+  （含 Markdown 手册和 HTML 版本）
+- 架构文档本地副本：$DOCS_CLONE_DIR
+  （projects-doc 仓库的完整克隆，已保留未删除）
+
+推送状态：
 - 项目仓库：已推送至 auto-workflow 分支
 - 文档仓库：已推送至 auto-workflow 分支
-- 文档本地副本：$DOCS_CLONE_DIR（已保留，未删除）
 ```
 
-#### 10c — Screenshot Summary
+**Key rules for path output:**
+- Output FULL absolute paths, not relative paths — the user should be able to copy-paste them
+- Output the paths even if the user declined commit/push in Step 7 — the local files still exist
+- If push was skipped (user declined), replace "推送状态" section with:
+
+```
+本地生成文件路径：
+- 用户手册：<absolute-project-root>/yanzhi-user-manual/<version-name>-YYMMDD-HHmmss/
+  （含 Markdown 手册和 HTML 版本）
+- 架构文档本地副本：$DOCS_CLONE_DIR
+  （位于临时目录，请注意备份）
+
+提交与推送已跳过（用户未确认）。
+```
+
+#### 11c — Screenshot Summary
 
 List **each screenshot individually** — do NOT summarize with a count (e.g., "3 screenshots captured"). The user must be able to see the exact file path and status of every single screenshot.
 
@@ -456,7 +548,9 @@ Use this format:
 | Using `git push --force` for docs repo | **NEVER** use `--force`, `-f`, or `--force-with-lease`. Pull → resolve → re-push. Repeat until successful. |
 | Discarding content during conflict resolution | When resolving conflicts in `projects-doc`, maximally preserve ALL content from BOTH sides |
 | Not specifying which doc directory changed in commit message | The commit message must identify the project AND the specific doc directory: `docs: update <project>/<doc-dir> documentation` |
-| Skipping user review of changes because "user already knows" | Always present Step 10 change review before final summary — it's the authoritative record |
+| Skipping user review of changes because "user already knows" | Always present Step 11 change review before final summary — it's the authoritative record |
 | Auto-continuing when `writing-user-manual` or `writing-docs` hits a blocker | Pause and ask the user when sub-skills cannot proceed. Screenshot placeholders are exempt. |
 | Summarizing screenshots with a count ("共 5 张") instead of listing individually | Each screenshot must get its own row with file path and status — never collapse into a number |
 | Skipping screenshot summary because "user doesn't need it" | The summary documents what was captured vs placeholder — it's required visibility, not optional output |
+| Auto-committing and pushing without asking the user | Always pause at Step 7 to present changes and ask for confirmation. Never push without explicit user consent. |
+| Outputting relative paths in the final summary | Always output FULL absolute paths for user manual and docs clone directories — the user needs to copy-paste them |
