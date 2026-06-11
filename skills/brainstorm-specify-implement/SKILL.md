@@ -1,11 +1,11 @@
 ---
-name: brainstorm-and-specify
-description: Use when the user wants to transform a rough idea or feature request into a complete SpecKit specification through brainstorming, clarification, planning, and task breakdown. Triggers on `/brainstorm-and-specify` or when the user asks to "spec out" a feature idea. Runs the full SpecKit pipeline (specify → clarify → plan → tasks) automatically without interrupting between steps.
+name: brainstorm-specify-implement
+description: Use when the user wants to transform a rough idea or feature request into a complete SpecKit specification and immediately begin implementation. Triggers on `/brainstorm-specify-implement` or when the user asks to "spec out" a feature idea and build it.
 ---
 
-# Brainstorm and Specify
+# Brainstorm, Specify, and Implement
 
-Orchestrate a structured workflow: validate prerequisites → brainstorm requirements → generate SpecKit specification.
+Orchestrate a structured workflow: validate prerequisites → brainstorm requirements → generate SpecKit specification → implement with TDD and subagent-driven development.
 
 ## Decision Flow
 
@@ -16,7 +16,7 @@ digraph workflow {
     start [label="Skill invoked", shape=doublecircle];
     check_speckit [label="speckit-specify skill\nexists?", shape=diamond];
     stop_speckit [label="STOP: Prompt user to\nrun specify init", shape=box];
-    check_superpowers [label="superpowers:brainstorming\nAND superpowers:test-driven-\ndevelopment exist?", shape=diamond];
+    check_superpowers [label="superpowers:brainstorming\nAND superpowers:test-driven-\ndevelopment AND superpowers:\nsubagent-driven-development\nexist?", shape=diamond];
     stop_superpowers [label="STOP: Prompt user to\ninstall Superpowers plugin", shape=box];
     check_requirements [label="User provided\nrequirements?", shape=diamond];
     stop_no_req [label="STOP: Prompt user\nto provide requirements", shape=box];
@@ -27,14 +27,14 @@ digraph workflow {
     plan [label="Run speckit-plan", shape=box];
     tasks [label="Run speckit-tasks", shape=box];
     check_all_done [label="All 4 SpecKit\nsteps succeeded?", shape=diamond];
-    prompt_goal [label="Output final /goal\nprompt to user", shape=box];
+    implement [label="Invoke speckit-implement\nwith superpowers:test-driven-\ndevelopment and superpowers:\nsubagent-driven-development", shape=box];
     done [label="Done", shape=doublecircle];
 
     start -> check_speckit;
     check_speckit -> stop_speckit [label="no"];
     check_speckit -> check_superpowers [label="yes"];
     check_superpowers -> stop_superpowers [label="missing"];
-    check_superpowers -> check_requirements [label="both exist"];
+    check_superpowers -> check_requirements [label="all exist"];
     check_requirements -> stop_no_req [label="no"];
     check_requirements -> echo_req [label="yes"];
     echo_req -> brainstorm;
@@ -43,8 +43,8 @@ digraph workflow {
     clarify -> plan;
     plan -> tasks;
     tasks -> check_all_done;
-    check_all_done -> prompt_goal [label="yes"];
-    prompt_goal -> done;
+    check_all_done -> implement [label="yes"];
+    implement -> done;
 }
 ```
 
@@ -52,8 +52,8 @@ digraph workflow {
 
 This skill depends on two external plugins:
 
-- **SpecKit** — provides `speckit-specify`, `speckit-clarify`, `speckit-plan`, `speckit-tasks`
-- **Superpowers** — provides `superpowers:brainstorming` and `superpowers:test-driven-development`
+- **SpecKit** — provides `speckit-specify`, `speckit-clarify`, `speckit-plan`, `speckit-tasks`, `speckit-implement`
+- **Superpowers** — provides `superpowers:brainstorming`, `superpowers:test-driven-development`, and `superpowers:subagent-driven-development`
 
 ## Step-by-Step Workflow
 
@@ -74,15 +74,19 @@ specify init --here --integration claude
 
 ### Step 2 — Check Superpowers Skills
 
-Verify that BOTH `superpowers:brainstorming` AND `superpowers:test-driven-development` exist in the current session's available skills.
+Verify that ALL THREE of the following skills exist in the current session:
 
-**If either is missing**, output:
+1. `superpowers:brainstorming`
+2. `superpowers:test-driven-development`
+3. `superpowers:subagent-driven-development`
+
+**If any is missing**, output:
 
 ```
-该 Skill 依赖 Superpowers 插件中的 brainstorming 和 test-driven-development 两个 Skill。请先安装 Superpowers 插件后重试。
+该 Skill 依赖 Superpowers 插件中的 brainstorming、test-driven-development 和 subagent-driven-development 三个 Skill。请先安装 Superpowers 插件后重试。
 ```
 
-**If both exist**, proceed to Step 3.
+**If all exist**, proceed to Step 3.
 
 ### Step 3 — Confirm User Requirements
 
@@ -136,31 +140,23 @@ To distinguish:
 
 If any of the 4 skills fails, report which skill failed and suggest the user re-run it individually.
 
-### Step 6 — Output Final Prompt
+### Step 6 — Implement with TDD and Subagent-Driven Development
 
-After all 4 SpecKit steps complete successfully, output a prompt for the user to continue development. **Adapt the prompt based on the user's requirements:**
+After all 4 SpecKit steps complete successfully, immediately proceed to implementation. **Do NOT output a `/goal` prompt or wait for the user to initiate the next step.** Directly invoke the following skills in sequence:
 
-**If the requirements involve code implementation**, output:
+1. Invoke `superpowers:test-driven-development` via the Skill tool to establish the TDD methodology for the implementation.
+2. Invoke `superpowers:subagent-driven-development` via the Skill tool to establish the parallel execution methodology.
+3. Invoke `speckit-implement` via the Skill tool, pointing to the spec directory from Step 5 (e.g., `@specs/001-xxx/`). The `speckit-implement` skill will execute the tasks using TDD and subagent-driven development as the supporting methodology.
 
-```
-/goal 按照 @specs/001-xxx/ 的 Spec 规划，使用 Superpowers 的 TDD 方式进行开发。验收标准为所有模块均通过 TDD 的测试。
-```
+The spec directory path is the one generated by `speckit-specify` in Step 5. Always use the actual directory name — never hardcode the path.
 
-Replace `specs/001-xxx/` with the actual spec directory path generated by `speckit-specify` in Step 5.
-
-**If the requirements are documentation-only (no code changes)**, output:
+**Fallback:** If `speckit-implement` is not available (e.g., SpecKit version doesn't include it), output:
 
 ```
-/goal 按照 @specs/001-xxx/ 的 Spec 规划，完成文档的生成/更新工作。
+/goal 按照 @specs/001-xxx/ 的 Spec 规划，使用 Superpowers 的 TDD 和 subagent-driven-development 方式进行开发。验收标准为所有模块均通过 TDD 的测试。
 ```
 
-**If the requirements involve refactoring only (no new features)**, output:
-
-```
-/goal 按照 @specs/001-xxx/ 的 Spec 规划，使用 Superpowers 的 TDD 方式进行重构。验收标准为所有现有测试保持通过，且重构后的代码满足 Spec 要求。
-```
-
-Always replace `specs/001-xxx/` with the actual directory name. Adapt the description and acceptance criteria to match what the user actually asked for.
+Replace `specs/001-xxx/` with the actual spec directory path.
 
 ## Common Mistakes
 
@@ -172,5 +168,6 @@ Always replace `specs/001-xxx/` with the actual directory name. Adapt the descri
 | Pausing between SpecKit steps asking "shall I continue?" | Auto-continue through the pipeline; only pause when a skill asks a substantive question requiring human judgment |
 | Answering SpecKit questions on behalf of the user | Surface all design decisions, preference trade-offs, and clarification questions to the user; never guess or assume |
 | Using a hardcoded spec path in Step 6 | Always use the actual directory path from `speckit-specify` output |
-| Using the TDD prompt for docs-only tasks | Adapt the final prompt to match the user's actual goal |
+| Outputting a `/goal` prompt instead of directly invoking implementation | Step 6 must directly invoke `speckit-implement`; only fall back to the `/goal` prompt if the skill is unavailable |
 | Proceeding after a skill fails | Stop and report which skill failed; do not continue the pipeline |
+| Forgetting to invoke TDD and subagent-development skills before implement | Always invoke `superpowers:test-driven-development` and `superpowers:subagent-driven-development` before `speckit-implement` |

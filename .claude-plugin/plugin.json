@@ -1,5 +1,5 @@
 {
   "name": "yanzhi-sdd-workflow",
-  "description": "A brainstorming-specify-tdd workflow, powered by Superpowers and SpecKit.",
-  "version": "v260610-014117"
+  "description": "A brainstorm-specify-implement workflow, powered by Superpowers and SpecKit.",
+  "version": "v260611-140648"
 }

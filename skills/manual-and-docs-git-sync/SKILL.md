@@ -1,11 +1,11 @@
 ---
 name: manual-and-docs-git-sync
-description: Use after a brainstorming-specify-tdd workflow completes, when user manuals and architecture docs need synchronization with git push to the auto-workflow branch. Triggers on `/manual-and-docs-git-sync` or when the user asks to "sync manuals and docs" after a feature workflow.
+description: Use after a brainstorm-specify-implement workflow completes, when user manuals and architecture docs need synchronization with git push to the auto-workflow branch. Triggers on `/manual-and-docs-git-sync` or when the user asks to "sync manuals and docs" after a feature workflow.
 ---
 
 # Manual and Docs Git Sync
 
-After a brainstorming-specify-tdd workflow completes, automatically update the user manual, convert it to HTML, refresh architecture documentation, and push both repos.
+After a brainstorm-specify-implement workflow completes, automatically update the user manual, convert it to HTML, refresh architecture documentation, and push both repos.
 
 ## Foundational Principle
 
