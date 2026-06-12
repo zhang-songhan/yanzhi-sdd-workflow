@@ -5,7 +5,7 @@ description: Use when the user wants to transform a rough idea or feature reques
 
 # Brainstorm, Specify, and Implement
 
-Orchestrate a structured workflow: validate prerequisites → brainstorm → write implementation plan → ask user whether to enter SpecKit for double spec confirmation, or proceed directly to subagent-driven implementation.
+Orchestrate a structured workflow: validate prerequisites → brainstorm → write implementation plan → ask user whether to use SpecKit for double spec confirmation, or proceed directly to subagent-driven implementation.
 
 ## Decision Flow
 
@@ -14,16 +14,16 @@ digraph workflow {
     rankdir=TB;
 
     start [label="Skill invoked", shape=doublecircle];
-    check_speckit [label="speckit-specify skill\nexists?", shape=diamond];
-    stop_speckit [label="STOP: Prompt user to\nrun specify init", shape=box];
     check_superpowers [label="Required Superpowers\nskills exist?", shape=diamond];
     stop_superpowers [label="STOP: Prompt user to\ninstall Superpowers plugin", shape=box];
     check_requirements [label="User provided\nrequirements?", shape=diamond];
     stop_no_req [label="STOP: Prompt user\nto provide requirements", shape=box];
     echo_req [label="Echo requirements\nback to user", shape=box];
     brainstorm [label="Run superpowers:brainstorming\n(clarify, no Spec doc)", shape=box];
-    writing_plan [label="Run superpowers:writing-plans\n(generate implementation plan)", shape=box];
-    ask_speckit [label="Ask user: enter SpecKit\nphase for double spec\nconfirmation + improved spec?", shape=diamond];
+    writing_plan [label="Run superpowers:writing-plans\n(auto-invoke, no confirmation)", shape=box];
+    ask_speckit [label="Ask user: use SpecKit\nfor double spec\nconfirmation?", shape=diamond];
+    check_speckit [label="speckit-specify skill\nexists?", shape=diamond];
+    stop_speckit [label="STOP: Prompt user to\nrun specify init", shape=box];
     specify [label="Run speckit-specify", shape=box];
     clarify [label="Run speckit-clarify\n(auto-invoke)", shape=box];
     plan [label="Run speckit-plan\n(auto-invoke)", shape=box];
@@ -33,9 +33,7 @@ digraph workflow {
     implement_direct [label="Invoke superpowers:\nsubagent-driven-development\n(each subagent obeys\nTDD norms)", shape=box];
     done [label="Done", shape=doublecircle];
 
-    start -> check_speckit;
-    check_speckit -> stop_speckit [label="no"];
-    check_speckit -> check_superpowers [label="yes"];
+    start -> check_superpowers;
     check_superpowers -> stop_superpowers [label="missing"];
     check_superpowers -> check_requirements [label="all exist"];
     check_requirements -> stop_no_req [label="no"];
@@ -43,7 +41,9 @@ digraph workflow {
     echo_req -> brainstorm;
     brainstorm -> writing_plan;
     writing_plan -> ask_speckit;
-    ask_speckit -> specify [label="yes (enter SpecKit)"];
+    ask_speckit -> check_speckit [label="yes (use SpecKit)"];
+    check_speckit -> stop_speckit [label="not found"];
+    check_speckit -> specify [label="found"];
     specify -> clarify;
     clarify -> plan;
     plan -> tasks;
@@ -59,27 +59,14 @@ digraph workflow {
 
 This skill depends on two external plugins:
 
-- **SpecKit** — provides `speckit-specify`, `speckit-clarify`, `speckit-plan`, `speckit-tasks`, `speckit-implement`
 - **Superpowers** — provides `superpowers:brainstorming`, `superpowers:writing-plans`, `superpowers:test-driven-development`, and `superpowers:subagent-driven-development`
+- **SpecKit** — provides `speckit-specify`, `speckit-clarify`, `speckit-plan`, `speckit-tasks`, `speckit-implement` (only required if user chooses the SpecKit path)
 
 ## Step-by-Step Workflow
 
 Execute each step in order. Do NOT skip ahead. If any step fails its check, stop immediately and output the specified message to the user.
 
-### Step 1 — Check SpecKit Initialization
-
-Check whether the `speckit-specify` skill exists in the current session's available skills.
-
-**If NOT found**, output the following message verbatim and stop:
-
-```
-该项目尚未使用 SpecKit 进行初始化。请在终端（Terminal）中执行以下命令后，重新启动 Claude Code 并调用此 Skill：
-specify init --here --integration claude
-```
-
-**If found**, proceed to Step 2.
-
-### Step 2 — Check Superpowers Skills
+### Step 1 — Check Superpowers Skills
 
 Verify that ALL FOUR of the following skills exist in the current session:
 
@@ -94,9 +81,9 @@ Verify that ALL FOUR of the following skills exist in the current session:
 该 Skill 依赖 Superpowers 插件中的 brainstorming、writing-plans、test-driven-development 和 subagent-driven-development 四个 Skill。请先安装 Superpowers 插件后重试。
 ```
 
-**If all exist**, proceed to Step 3.
+**If all exist**, proceed to Step 2.
 
-### Step 3 — Confirm User Requirements
+### Step 2 — Confirm User Requirements
 
 Check whether the user provided requirements — either inline when invoking this skill, or in the preceding conversation context.
 
@@ -116,52 +103,67 @@ Check whether the user provided requirements — either inline when invoking thi
 即将进入头脑风暴阶段，细化具体需求。
 ```
 
-Then proceed to Step 4.
+Then proceed to Step 3.
 
-### Step 4 — Brainstorming
+### Step 3 — Brainstorming
 
 Invoke `superpowers:brainstorming` via the Skill tool to clarify and refine the user's requirements.
 
-**Critical constraint:** Use brainstorming to explore intent, scope, edge cases, and design decisions. Do NOT generate a Superpowers Spec document. The output of this phase is a clear, shared understanding — not a written spec artifact.
+**Critical constraint:** Use brainstorming to explore intent, scope, edge cases, and design decisions. Do NOT generate a Spec document during this step.
 
-After brainstorming concludes and requirements are clarified, proceed to Step 5.
+After brainstorming concludes and requirements are clarified, proceed to Step 4.
 
-### Step 5 — Write Implementation Plan
+### Step 4 — Write Implementation Plan (Auto-Invoke)
 
-Invoke `superpowers:writing-plans` via the Skill tool to generate a structured implementation plan from the clarified requirements.
+Immediately invoke `superpowers:writing-plans` via the Skill tool to generate a structured implementation plan from the clarified requirements. **Do NOT ask the user whether to proceed — invoke writing-plans automatically without confirmation.**
 
 This step transforms the brainstorming output into a concrete, actionable plan before any spec or implementation work begins.
 
-After the writing-plan concludes, proceed to Step 6.
+After the writing-plan concludes, proceed to Step 5.
 
-### Step 6 — Ask User: SpecKit Double Confirmation
+### Step 5 — Ask User: Use SpecKit?
 
-Present the user with a clear choice:
+Present the user with a clear choice about whether to use SpecKit:
 
 ```
-需求已明确，实现计划已生成。是否需要进入 SpecKit 阶段进行双重确认并生成改进版 Spec？
+需求已明确，实现计划已生成。是否需要使用 SpecKit 进行双重确认并生成改进版 Spec？
 
-- **进入 SpecKit**：将自动依次执行 speckit-specify → speckit-clarify → speckit-plan → speckit-tasks → speckit-implement（使用 TDD 和 subagent-driven-development 实现）
+- **使用 SpecKit**：将自动依次执行 speckit-specify → speckit-clarify → speckit-plan → speckit-tasks → speckit-implement（使用 TDD 和 subagent-driven-development 实现）
 - **跳过 SpecKit**：直接使用 superpowers:subagent-driven-development 进行实现（每个 subagent 遵循 TDD 规范）
 ```
 
 Wait for the user's explicit choice, then proceed accordingly:
 
-- **If user agrees to SpecKit** → proceed to Step 7a
-- **If user declines SpecKit** → proceed to Step 7b
+- **If user chooses SpecKit** → proceed to Step 6a
+- **If user declines SpecKit** → proceed to Step 6b
 
 **Do NOT make this choice on behalf of the user.** This is a human-in-the-loop decision.
 
-### Step 7a — SpecKit Pipeline (User Chose SpecKit)
+### Step 6a — SpecKit Pipeline (User Chose SpecKit)
 
-Invoke the following 4 skills in strict sequence via the Skill tool. **This pipeline runs automatically end-to-end.** After each skill completes successfully, immediately proceed to the next — do NOT pause, ask "shall I continue?", or wait for user confirmation between steps.
+#### 6a.1 — Check SpecKit Initialization
+
+Check whether the `speckit-specify` skill exists in the current session's available skills.
+
+**If NOT found**, output the following message verbatim and stop:
+
+```
+该项目尚未使用 SpecKit 进行初始化。请在终端（Terminal）中执行以下命令后，重新启动 Claude Code 并调用此 Skill：
+specify init --here --integration claude
+```
+
+**If found**, proceed to 6a.2.
+
+#### 6a.2 — Run SpecKit Pipeline
+
+Invoke the following 4 skills in strict sequence via the Skill tool. **This pipeline runs automatically end-to-end with NO user confirmation between steps.** After each skill completes successfully, immediately proceed to the next — do NOT pause, ask "shall I continue?", or wait for user confirmation between steps.
 
 1. `speckit-specify` — generates the spec document and creates the spec directory
 2. `speckit-clarify` — clarifies ambiguities in the spec
 3. `speckit-plan` — creates the implementation plan
 4. `speckit-tasks` — breaks the plan into actionable tasks
 
-**Auto-continuation:** Once `speckit-specify` starts, the pipeline proceeds through clarify → plan → tasks without interruption. The user should not need to type "speckit-clarify", "speckit-plan", or "speckit-tasks" manually — this skill orchestrates the full chain automatically.
+**Auto-continuation (CRITICAL):** Once `speckit-specify` starts, the pipeline proceeds through clarify → plan → tasks without interruption. The user should NOT need to type "speckit-clarify", "speckit-plan", or "speckit-tasks" manually — this skill orchestrates the full chain automatically. **Never ask "should I continue to the next skill?" or wait for the user to confirm each step.**
 
 **Human-in-the-Loop Constraint (CRITICAL):** If any SpecKit skill asks a substantive question — such as a design decision, preference between alternatives, clarification of ambiguous requirements, or any question that requires human judgment — you MUST surface that question to the user and wait for their answer. Do NOT make assumptions, guess, or choose on the user's behalf. The auto-continuation applies to the pipeline orchestration, NOT to answering domain-level questions for the user.
 
@@ -174,32 +176,24 @@ To distinguish:
 
 If any of the 4 skills fails, report which skill failed and suggest the user re-run it individually.
 
-After all 4 SpecKit steps complete, proceed to Step 8a.
+After all 4 SpecKit steps complete, proceed to Step 7a.
 
-### Step 8a — Implement via SpecKit (User Chose SpecKit)
+### Step 7a — Implement via SpecKit (User Chose SpecKit)
 
 After all 4 SpecKit steps complete successfully, immediately proceed to implementation. **Do NOT output a `/goal` prompt or wait for the user to initiate the next step.** Directly invoke the following skills in sequence:
 
 1. Invoke `superpowers:test-driven-development` via the Skill tool to establish the TDD methodology.
 2. Invoke `superpowers:subagent-driven-development` via the Skill tool to establish the parallel execution methodology.
-3. Invoke `speckit-implement` via the Skill tool, pointing to the spec directory from Step 7a (e.g., `@specs/001-xxx/`). The `speckit-implement` skill will execute the tasks using TDD and subagent-driven development as the supporting methodology.
+3. Invoke `speckit-implement` via the Skill tool, pointing to the spec directory from Step 6a (e.g., `@specs/001-xxx/`). The `speckit-implement` skill will execute the tasks using TDD and subagent-driven development as the supporting methodology.
 
-The spec directory path is the one generated by `speckit-specify` in Step 7a. Always use the actual directory name — never hardcode the path.
+The spec directory path is the one generated by `speckit-specify` in Step 6a. Always use the actual directory name — never hardcode the path.
 
-**Fallback:** If `speckit-implement` is not available (e.g., SpecKit version doesn't include it), output:
-
-```
-/goal 按照 @specs/001-xxx/ 的 Spec 规划，使用 Superpowers 的 TDD 和 subagent-driven-development 方式进行开发。验收标准为所有模块均通过 TDD 的测试。
-```
-
-Replace `specs/001-xxx/` with the actual spec directory path.
-
-### Step 7b — Direct Implementation (User Skipped SpecKit)
+### Step 6b — Direct Implementation (User Skipped SpecKit)
 
 Invoke the following skills in sequence:
 
 1. Invoke `superpowers:test-driven-development` via the Skill tool to establish the TDD methodology.
-2. Invoke `superpowers:subagent-driven-development` via the Skill tool to execute the implementation plan from Step 5.
+2. Invoke `superpowers:subagent-driven-development` via the Skill tool to execute the implementation plan from Step 4.
 
 **TDD Enforcement:** Each subagent dispatched during `subagent-driven-development` MUST obey `superpowers:test-driven-development` norms — write tests first, watch them fail, implement minimally, refactor, and verify 80%+ coverage.
 
@@ -207,15 +201,18 @@ Invoke the following skills in sequence:
 
 | Mistake | Correction |
 |---------|------------|
-| Skipping prerequisite checks | Always check Step 1 and Step 2 first — the workflow cannot proceed without SpecKit and Superpowers |
-| Generating a Superpowers Spec doc in Step 4 | Brainstorming clarifies requirements verbally; the plan is generated by writing-plans in Step 5 |
-| Skipping writing-plans and jumping to SpecKit | Step 5 must run after brainstorming — writing-plans transforms clarified requirements into a structured plan |
-| Choosing SpecKit path on behalf of the user | Step 6 must present the choice explicitly; never assume the user wants SpecKit |
+| Checking SpecKit in Step 1 | SpecKit initialization is only checked in Step 6a AFTER the user chooses to use SpecKit. Do NOT check it upfront |
+| Skipping Superpowers prerequisite check | Always check Step 1 first — the workflow cannot proceed without the four Superpowers skills |
+| Asking user to confirm before writing-plans | Step 4 auto-invokes writing-plans immediately after brainstorming — no user confirmation needed |
+| Letting user choose development method after writing-plans | Step 5 only asks "use SpecKit or not?" — do NOT present it as a generic development method choice |
+| Generating a Superpowers Spec doc in Step 3 | Brainstorming clarifies requirements verbally; the plan is generated by writing-plans in Step 4 |
+| Skipping writing-plans and jumping to SpecKit | Step 4 must run after brainstorming — writing-plans transforms clarified requirements into a structured plan |
+| Choosing SpecKit path on behalf of the user | Step 5 must present the choice explicitly; never assume the user wants SpecKit |
 | Calling SpecKit skills in parallel | They must run sequentially: specify → clarify → plan → tasks |
 | Pausing between SpecKit steps asking "shall I continue?" | Auto-continue through the pipeline; only pause when a skill asks a substantive question requiring human judgment |
+| Asking user to confirm each SpecKit skill invocation | NEVER ask "should I run speckit-clarify now?" or similar — the pipeline is fully automatic |
 | Answering SpecKit questions on behalf of the user | Surface all design decisions, preference trade-offs, and clarification questions to the user; never guess or assume |
-| Using a hardcoded spec path in Step 8a | Always use the actual directory path from `speckit-specify` output |
-| Outputting a `/goal` prompt instead of directly invoking implementation | Step 8a must directly invoke `speckit-implement`; only fall back to the `/goal` prompt if the skill is unavailable |
+| Using a hardcoded spec path in Step 7a | Always use the actual directory path from `speckit-specify` output |
 | Proceeding after a skill fails | Stop and report which skill failed; do not continue the pipeline |
-| Forgetting to invoke TDD before subagent-development in Step 7b | Always invoke `superpowers:test-driven-development` before `superpowers:subagent-driven-development` |
-| Subagents in Step 7b skipping TDD | Each subagent in the direct implementation path must follow TDD norms — enforce this explicitly |
+| Forgetting to invoke TDD before subagent-development in Step 6b | Always invoke `superpowers:test-driven-development` before `superpowers:subagent-driven-development` |
+| Subagents in Step 6b skipping TDD | Each subagent in the direct implementation path must follow TDD norms — enforce this explicitly |
